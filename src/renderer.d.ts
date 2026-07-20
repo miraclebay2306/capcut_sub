@@ -7,6 +7,7 @@ export interface CapcutLaoBridge {
   clearApiKey(): Promise<boolean>;
   runPipeline(config: PipelineConfig): Promise<PipelineResult>;
   onProgress(callback: (p: PipelineProgress) => void): () => void;
+  openCapCut(): Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

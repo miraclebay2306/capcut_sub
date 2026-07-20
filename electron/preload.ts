@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld("capcutLao", {
   runPipeline: (config: PipelineConfig): Promise<PipelineResult> =>
     ipcRenderer.invoke("run-pipeline", config),
 
+  openCapCut: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("open-capcut"),
+
   onProgress: (callback: (p: PipelineProgress) => void) => {
     const listener = (_e: Electron.IpcRendererEvent, p: PipelineProgress) => callback(p);
     ipcRenderer.on("pipeline-progress", listener);

@@ -276,6 +276,7 @@ export function insertLaoSubtitles(
 
   let count = 0;
   for (const cue of cues) {
+
     const startUs = mapMediaTimeToTimelineUs(cue.startSec, videoTracks);
     const endUs = mapMediaTimeToTimelineUs(cue.endSec, videoTracks);
     const durationUs = Math.max(100_000, endUs - startUs);
@@ -349,12 +350,27 @@ export function insertLaoSubtitles(
       id: randomUUID(),
       material_id: materialId,
       target_timerange: { start: startUs, duration: durationUs },
+      source_timerange: { start: 0, duration: durationUs },
+      speed: 1.0,
+      volume: 1.0,
+      visible: true,
       clip: {
         alpha: 1.0,
         flip: { horizontal: false, vertical: false },
         rotation: 0.0,
         scale: { x: 1.0, y: 1.0 },
         transform: resolveTransform(style.position),
+      },
+      enable_adjust: true,
+      enable_color_curves: true,
+      enable_color_wheels: true,
+      enable_lut: true,
+      enable_smart_color_adjust: false,
+      responsive_layout: {
+        enable: false,
+        horizontal_pos_type: 0,
+        target_follow_material_id: "",
+        vertical_pos_type: 0,
       },
       keyframe_refs: [keyframeId],
       extra_material_refs: [] as string[],
@@ -598,18 +614,18 @@ function addKaraokeAnimationMaterial(json: any, durationUs: number): string {
 function insertKaraokeSubSegments(
   json: any,
   textTrack: any,
-  highlightTrack: any,
   videoTracks: any[],
   cue: SubtitleCue,
   style: any,
   fontSizePx: number,
   baseRgb: [number, number, number],
-  colorHex: string,
-  highlightHex: string,
   highlightRgb: [number, number, number],
+  colorHex: string,
   linkSubtitleToClip: boolean
 ): number {
-  const combinedText = joinLaoWords(cue.runs.map((r) => r.text));
+  const { combinedText, ranges } = buildUtf16RunRanges(cue.runs);
+  if (!combinedText || combinedText.trim().length === 0) return 0;
+
   const { fontName, fontPath } = resolveFontInfo(style.fontFamily);
   const fontId = ensureFontMaterial(json, fontName, fontPath);
   const strokeWidthVal = strokeWidthToCapCut(style.strokeWidth);
@@ -626,77 +642,114 @@ function insertKaraokeSubSegments(
         ]
       : [];
 
-  json.keyframes = json.keyframes ?? {};
-  json.keyframes.texts = json.keyframes.texts ?? [];
+  const slices = buildKaraokeSlices(cue);
+  if (slices.length === 0) return 0;
 
-  const startUs = mapMediaTimeToTimelineUs(cue.startSec, videoTracks);
-  const endUs = mapMediaTimeToTimelineUs(cue.endSec, videoTracks);
-  const durationUs = Math.max(100_000, endUs - startUs);
+  let addedCount = 0;
 
-  const materialId = randomUUID();
-  const animId = addKaraokeAnimationMaterial(json, durationUs);
+  for (const slice of slices) {
+    const startUs = mapMediaTimeToTimelineUs(slice.startSec, videoTracks);
+    const endUs = mapMediaTimeToTimelineUs(slice.endSec, videoTracks);
+    const durationUs = Math.max(50_000, endUs - startUs);
 
-  json.materials.texts.push({
-    id: materialId,
-    type: "text",
-    sub_type: 0,
-    add_type: 0,
-    name: combinedText,
-    content: JSON.stringify({
-      styles: [
-        {
-          fill: buildFill(baseRgb),
-          font: { id: fontId, path: fontPath, name: fontName, title: fontName },
-          size: fontSizePx,
-          bold: false,
-          range: [0, utf16LEByteLen(combinedText)],
-          strokes,
-        },
-      ],
-      text: combinedText,
-    }),
-    ...buildTextMaterialFields(
+    const styles = buildStylesForActiveRun(
+      ranges,
+      utf16LEByteLen(combinedText),
+      slice.activeRunIndex,
       fontId,
       fontName,
       fontPath,
       fontSizePx,
-      colorHex,
-      style.strokeColor,
-      strokeWidthVal,
-      style.backgroundBanner
-    ),
-  });
+      baseRgb,
+      highlightRgb,
+      strokes
+    );
 
-  const baseKfId = randomUUID();
-  json.keyframes.texts.push({
-    id: baseKfId,
-    keyframe_list: [{ id: randomUUID(), property_type: "scale", time_offset: 0, values: [1.0, 1.0] }],
-    property_type: "scale",
-  });
+    const materialId = randomUUID();
+    json.materials.texts.push({
+      id: materialId,
+      type: "text",
+      sub_type: 0,
+      add_type: 0,
+      name: combinedText,
+      content: JSON.stringify({
+        styles,
+        text: combinedText,
+      }),
+      ...buildTextMaterialFields(
+        fontId,
+        fontName,
+        fontPath,
+        fontSizePx,
+        colorHex,
+        style.strokeColor,
+        strokeWidthVal,
+        style.backgroundBanner
+      ),
+    });
 
-  const segment: any = {
-    id: randomUUID(),
-    material_id: materialId,
-    target_timerange: { start: startUs, duration: durationUs },
-    clip: {
-      alpha: 1.0,
-      flip: { horizontal: false, vertical: false },
-      rotation: 0.0,
-      scale: { x: 1.0, y: 1.0 },
-      transform: resolveTransform(style.position),
-    },
-    keyframe_refs: [baseKfId],
-    extra_material_refs: [animId],
-    render_index: 0,
-  };
+    json.keyframes = json.keyframes ?? {};
+    json.keyframes.texts = json.keyframes.texts ?? [];
 
-  if (linkSubtitleToClip) {
-    const overlappingClip = findOverlappingVideoSegment(videoTracks, startUs, startUs + durationUs);
-    if (overlappingClip) segment.extra_material_refs.push(overlappingClip.id);
+    const baseKfId = randomUUID();
+    json.keyframes.texts.push({
+      id: baseKfId,
+      keyframe_list: [
+        {
+          id: randomUUID(),
+          property_type: "scale",
+          time_offset: 0,
+          values: [1.0, 1.0],
+        },
+      ],
+      property_type: "scale",
+    });
+
+    const segment: any = {
+      id: randomUUID(),
+      material_id: materialId,
+      target_timerange: { start: startUs, duration: durationUs },
+      source_timerange: { start: 0, duration: durationUs },
+      speed: 1.0,
+      volume: 1.0,
+      visible: true,
+      clip: {
+        alpha: 1.0,
+        flip: { horizontal: false, vertical: false },
+        rotation: 0.0,
+        scale: { x: 1.0, y: 1.0 },
+        transform: resolveTransform(style.position),
+      },
+      enable_adjust: true,
+      enable_color_curves: true,
+      enable_color_wheels: true,
+      enable_lut: true,
+      enable_smart_color_adjust: false,
+      responsive_layout: {
+        enable: false,
+        horizontal_pos_type: 0,
+        target_follow_material_id: "",
+        vertical_pos_type: 0,
+      },
+      keyframe_refs: [baseKfId],
+      extra_material_refs: [] as string[],
+      render_index: 0,
+    };
+
+    if (linkSubtitleToClip) {
+      const overlappingClip = findOverlappingVideoSegment(
+        videoTracks,
+        startUs,
+        startUs + durationUs
+      );
+      if (overlappingClip) segment.extra_material_refs.push(overlappingClip.id);
+    }
+
+    textTrack.segments.push(segment);
+    addedCount++;
   }
 
-  textTrack.segments.push(segment);
-  return 1;
+  return addedCount;
 }
 
 
@@ -752,7 +805,7 @@ export function saveDraft(loaded: LoadedDraft, projectDir: string, saveMode: "co
             height: 0,
             id: t.id,
             import_time: Math.floor(Date.now() / 1000),
-            import_time_ms: Date.now() * 1000,
+            import_time_ms: Date.now(),
             item_source: 0,
             material_color_tag: "",
             md5: "",

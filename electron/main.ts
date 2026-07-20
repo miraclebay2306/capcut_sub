@@ -94,3 +94,39 @@ ipcMain.handle("run-pipeline", async (event, config: PipelineConfig) => {
   };
   return runPipeline(config, onProgress);
 });
+
+// ---------------------------------------------------------------------------
+// IPC: open CapCut application
+// ---------------------------------------------------------------------------
+ipcMain.handle("open-capcut", async () => {
+  const localAppData = process.env.LOCALAPPDATA || "";
+  const programFiles = process.env.ProgramFiles || "";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] || "";
+
+  const possiblePaths = [
+    path.join(localAppData, "CapCut", "Apps", "CapCut.exe"),
+    path.join(localAppData, "CapCut", "CapCut.exe"),
+    path.join(programFiles, "CapCut", "CapCut.exe"),
+    path.join(programFilesX86, "CapCut", "CapCut.exe"),
+    path.join(localAppData, "JianyingPro", "Apps", "JianyingPro.exe"),
+    path.join(programFiles, "JianyingPro", "JianyingPro.exe"),
+  ];
+
+  for (const exePath of possiblePaths) {
+    if (fs.existsSync(exePath)) {
+      const { spawn } = require("child_process");
+      spawn(exePath, [], { detached: true, stdio: "ignore" }).unref();
+      return { success: true, path: exePath };
+    }
+  }
+
+  // Fallback: spawn via cmd start command
+  try {
+    const { exec } = require("child_process");
+    exec('start "" "CapCut"', () => {});
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+

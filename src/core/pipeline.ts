@@ -105,15 +105,18 @@ function closeCapCutPC(): void {
     "CapCutPC.exe",
     "CapCutMain.exe",
     "CapCut_Main.exe",
+    "CapCutHelper.exe",
+    "CapCutRender.exe",
     "JianyingPro.exe",
     "JianyingProMain.exe",
   ];
   for (const exe of exes) {
     try {
-      execSync(`taskkill /F /IM ${exe} /T`, { stdio: "ignore" });
+      execSync(`taskkill /F /IM "${exe}" /T`, { stdio: "ignore" });
     } catch {}
   }
 }
+
 
 export async function runPipeline(
   config: PipelineConfig,

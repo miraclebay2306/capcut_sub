@@ -259,11 +259,16 @@ browseDirBtn.addEventListener("click", async () => {
 // Run pipeline
 // ---------------------------------------------------------------------------
 const runBtn = document.getElementById("runBtn");
+const openCapCutBtn = document.getElementById("openCapCutBtn");
 const progressWrap = document.getElementById("progressWrap");
 const progressBar = document.getElementById("progressBar");
 const progressLabel = document.getElementById("progressLabel");
 const progressPercent = document.getElementById("progressPercent");
 const statusMessage = document.getElementById("statusMessage");
+
+openCapCutBtn?.addEventListener("click", async () => {
+  await window.capcutLao.openCapCut();
+});
 
 function collectConfig() {
   return {
@@ -309,6 +314,7 @@ window.capcutLao.onProgress((p) => {
   if (p.stage === "error") {
     statusMessage.textContent = `ຂໍ້ຜິດພາດ: ${p.message}`;
     statusMessage.classList.add("text-danger");
+    openCapCutBtn?.classList.add("hidden");
   }
 });
 
@@ -325,6 +331,7 @@ runBtn.addEventListener("click", async () => {
   statusMessage.classList.remove("text-danger");
   statusMessage.textContent = "";
   runBtn.disabled = true;
+  openCapCutBtn?.classList.add("hidden");
   progressWrap.classList.remove("hidden");
 
   const result = await window.capcutLao.runPipeline(config);
@@ -332,8 +339,11 @@ runBtn.addEventListener("click", async () => {
   runBtn.disabled = false;
   if (result.ok) {
     statusMessage.textContent = `ສຳເລັດແລ້ວ — ສ້າງຊັບໄຕເຕີ້ນ ${result.subtitlesGenerated} ຂໍ້ຄວາມ → ${result.outputPath}`;
+    openCapCutBtn?.classList.remove("hidden");
   } else {
     statusMessage.textContent = `ລົ້ມເຫຼວ: ${result.error}`;
     statusMessage.classList.add("text-danger");
+    openCapCutBtn?.classList.add("hidden");
   }
 });
+
