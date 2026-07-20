@@ -18,7 +18,7 @@
   el.innerHTML = `<svg width="${n * 7}" height="32" viewBox="0 0 ${n * 7} 32">${bars.join("")}</svg>`;
 })();
 
-let selectedAnimationMode = "karaoke";
+let selectedAnimationMode = "word_by_word";
 
 function updateSubtitlePreview() {
   const previewEl = document.getElementById("subtitlePreviewText");
@@ -52,11 +52,7 @@ function updateSubtitlePreview() {
   previewEl.style.background = banner ? "rgba(0, 0, 0, 0.75)" : "transparent";
   previewEl.style.boxShadow = banner ? "0 2px 8px rgba(0,0,0,0.5)" : "none";
 
-  const highlightColor = colorKey === "yellow" ? "#39FF14" : "#F2C641";
-
-  if (selectedAnimationMode === "karaoke") {
-    previewEl.innerHTML = `<span style="font-size: 1.2em; font-weight: 700; color: ${highlightColor}; text-shadow: 0 0 10px ${highlightColor}66;">ສະບາຍດີ!</span> <span>ຍິນດີຕ້ອນຮັບ</span>`;
-  } else if (selectedAnimationMode === "word_by_word") {
+  if (selectedAnimationMode === "word_by_word") {
     previewEl.innerHTML = `<span>ສະບາຍດີ!</span>`;
   } else {
     previewEl.innerHTML = `<span>ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າสู่ CapCut Lao Subtitler</span>`;

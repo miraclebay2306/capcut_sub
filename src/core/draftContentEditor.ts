@@ -256,19 +256,7 @@ export function insertLaoSubtitles(
   // Remove existing text tracks to avoid accumulating duplicate track rows on re-runs
   json.tracks = (json.tracks ?? []).filter((t: any) => t.type !== "text");
 
-  // Base text track – shows all words in the base color for the full cue duration
   const textTrack: any = {
-    id: randomUUID(),
-    type: "text",
-    attribute: 0,
-    flag: 0,
-    is_main_track: false,
-    segments: [],
-  };
-
-  // Highlight text track – overlaid on top; carries yellow word highlight segments
-  // Pushed to json.tracks BEFORE textTrack so CapCut renders it on top in timeline UI & video render
-  const highlightTrack: any = {
     id: randomUUID(),
     type: "text",
     attribute: 0,
@@ -281,20 +269,6 @@ export function insertLaoSubtitles(
   const fontSizePx = resolveFontSizePx(style);
   const colorHex = resolveTextColorHex(style);
   const baseRgb = hexToRgbFloat(colorHex);
-
-  // Dynamic highlight color contrasting with base text color:
-  // White base text -> Yellow highlight (#FFD400)
-  // Yellow base text -> Neon Green highlight (#39FF14)
-  // Neon Green base text -> Yellow highlight (#FFD400)
-  let highlightHex = "#FFD400";
-  if (style.textColor === "yellow") {
-    highlightHex = "#39FF14";
-  } else if (style.textColor === "neon_green") {
-    highlightHex = "#FFD400";
-  } else {
-    highlightHex = "#FFD400";
-  }
-  const highlightRgb = hexToRgbFloat(highlightHex);
   const strokeWidthVal = strokeWidthToCapCut(style.strokeWidth);
   const strokeRgb = hexToRgbFloat(style.strokeColor || "#000000");
   const { fontName, fontPath } = resolveFontInfo(style.fontFamily);
@@ -302,133 +276,104 @@ export function insertLaoSubtitles(
 
   let count = 0;
   for (const cue of cues) {
-    if (cue.runs.some((r) => r.highlightAt)) {
-      const added = insertKaraokeSubSegments(
-        json,
-        textTrack,
-        highlightTrack,
-        videoTracks,
-        cue,
-        style,
-        fontSizePx,
-        baseRgb,
-        colorHex,
-        highlightHex,
-        highlightRgb,
-        config.timeline.linkSubtitleToClip
-      );
-      count += added;
-    } else {
-      const startUs = mapMediaTimeToTimelineUs(cue.startSec, videoTracks);
-      const endUs = mapMediaTimeToTimelineUs(cue.endSec, videoTracks);
-      const durationUs = Math.max(100_000, endUs - startUs);
-      if (durationUs <= 0) continue;
+    const startUs = mapMediaTimeToTimelineUs(cue.startSec, videoTracks);
+    const endUs = mapMediaTimeToTimelineUs(cue.endSec, videoTracks);
+    const durationUs = Math.max(100_000, endUs - startUs);
+    if (durationUs <= 0) continue;
 
-      const materialId = randomUUID();
-      const combinedText = joinLaoWords(cue.runs.map((r) => r.text));
+    const materialId = randomUUID();
+    const combinedText = joinLaoWords(cue.runs.map((r) => r.text));
 
-      json.materials.texts.push({
-        id: materialId,
-        type: "text",
-        sub_type: 0,
-        add_type: 0,
-        name: combinedText,
-        content: JSON.stringify({
-          styles: [
-            {
-              fill: buildFill(baseRgb),
-              font: {
-                id: fontId,
-                path: fontPath,
-                name: fontName,
-                title: fontName,
-              },
-              size: fontSizePx,
-              range: [0, utf16LEByteLen(combinedText)],
-              strokes:
-                style.strokeWidth > 0
-                  ? [
-                      {
-                        alpha: 1.0,
-                        color: strokeRgb,
-                        width: strokeWidthVal,
-                      },
-                    ]
-                  : [],
-            },
-          ],
-          text: combinedText,
-        }),
-        ...buildTextMaterialFields(
-          fontId,
-          fontName,
-          fontPath,
-          fontSizePx,
-          colorHex,
-          style.strokeColor,
-          strokeWidthVal,
-          style.backgroundBanner
-        ),
-      });
-
-      json.keyframes = json.keyframes ?? {};
-      json.keyframes.texts = json.keyframes.texts ?? [];
-
-      const keyframeId = randomUUID();
-      json.keyframes.texts.push({
-        id: keyframeId,
-        keyframe_list: [
+    json.materials.texts.push({
+      id: materialId,
+      type: "text",
+      sub_type: 0,
+      add_type: 0,
+      name: combinedText,
+      content: JSON.stringify({
+        styles: [
           {
-            id: randomUUID(),
-            property_type: "scale",
-            time_offset: 0,
-            values: [1.0, 1.0],
+            fill: buildFill(baseRgb),
+            font: {
+              id: fontId,
+              path: fontPath,
+              name: fontName,
+              title: fontName,
+            },
+            size: fontSizePx,
+            range: [0, utf16LEByteLen(combinedText)],
+            strokes:
+              style.strokeWidth > 0
+                ? [
+                    {
+                      alpha: 1.0,
+                      color: strokeRgb,
+                      width: strokeWidthVal,
+                    },
+                  ]
+                : [],
           },
         ],
-        property_type: "scale",
-      });
+        text: combinedText,
+      }),
+      ...buildTextMaterialFields(
+        fontId,
+        fontName,
+        fontPath,
+        fontSizePx,
+        colorHex,
+        style.strokeColor,
+        strokeWidthVal,
+        style.backgroundBanner
+      ),
+    });
 
-      const segment: any = {
-        id: randomUUID(),
-        material_id: materialId,
-        target_timerange: { start: startUs, duration: durationUs },
-        clip: {
-          alpha: 1.0,
-          flip: { horizontal: false, vertical: false },
-          rotation: 0.0,
-          scale: { x: 1.0, y: 1.0 },
-          transform: resolveTransform(style.position),
+    json.keyframes = json.keyframes ?? {};
+    json.keyframes.texts = json.keyframes.texts ?? [];
+
+    const keyframeId = randomUUID();
+    json.keyframes.texts.push({
+      id: keyframeId,
+      keyframe_list: [
+        {
+          id: randomUUID(),
+          property_type: "scale",
+          time_offset: 0,
+          values: [1.0, 1.0],
         },
-        keyframe_refs: [keyframeId],
-        extra_material_refs: [] as string[],
-        render_index: 0,
-      };
+      ],
+      property_type: "scale",
+    });
 
-      if (config.timeline.linkSubtitleToClip) {
-        const overlappingClip = findOverlappingVideoSegment(videoTracks, startUs, startUs + durationUs);
-        if (overlappingClip) {
-          segment.extra_material_refs.push(overlappingClip.id);
-        }
+    const segment: any = {
+      id: randomUUID(),
+      material_id: materialId,
+      target_timerange: { start: startUs, duration: durationUs },
+      clip: {
+        alpha: 1.0,
+        flip: { horizontal: false, vertical: false },
+        rotation: 0.0,
+        scale: { x: 1.0, y: 1.0 },
+        transform: resolveTransform(style.position),
+      },
+      keyframe_refs: [keyframeId],
+      extra_material_refs: [] as string[],
+      render_index: 0,
+    };
+
+    if (config.timeline.linkSubtitleToClip) {
+      const overlappingClip = findOverlappingVideoSegment(videoTracks, startUs, startUs + durationUs);
+      if (overlappingClip) {
+        segment.extra_material_refs.push(overlappingClip.id);
       }
-
-      textTrack.segments.push(segment);
-      count++;
     }
+
+    textTrack.segments.push(segment);
+    count++;
   }
 
-  // Sanitize both tracks to strictly prevent segment overlap in timeline microseconds.
-  // Overlapping segments on a single track cause CapCut to auto-create extra stacked text tracks.
   sanitizeTrackSegments(textTrack.segments);
-  if (highlightTrack.segments.length > 0) {
-    sanitizeTrackSegments(highlightTrack.segments);
-  }
-
-  // In CapCut's track array, lower index tracks appear at the top of the timeline UI list
-  // and render on top. Push highlightTrack first so it renders on top of textTrack.
   json.tracks.push(textTrack);
-  if (highlightTrack.segments.length > 0) {
-    json.tracks.push(highlightTrack);
-  }
   return count;
 }
 

@@ -7,7 +7,7 @@
 export type FontSize = "small" | "medium" | "large" | "xl";
 export type TextColor = "white" | "yellow" | "neon_green";
 export type SubtitlePosition = "bottom_center" | "center_screen" | "lower_center";
-export type AnimationMode = "sentence" | "word_by_word" | "karaoke";
+export type AnimationMode = "sentence" | "word_by_word";
 export type SpeechStyle = "polished" | "verbatim";
 export type SaveMode = "copy" | "overwrite";
 export type TranscriptionEngine = "gemini";

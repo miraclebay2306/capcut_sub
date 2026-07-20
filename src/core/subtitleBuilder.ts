@@ -48,9 +48,6 @@ export function buildCues(
     case "word_by_word":
       rawCues = buildWordByWordCues(sentences);
       break;
-    case "karaoke":
-      rawCues = buildKaraokeCues(sentences);
-      break;
     case "sentence":
     default:
       rawCues = buildSentenceCues(sentences);
@@ -282,70 +279,5 @@ function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
   return sanitizeCues(cues);
 }
 
-/**
- * Full-sentence Karaoke cues for CapCut built-in Karaoke text animation:
- * Groups words into natural sentence phrases (6-8 words per cue)
- * so CapCut's native Karaoke animation sweeps smoothly across full phrases.
- */
-function buildKaraokeCues(sentences: TranscribedSentence[]): SubtitleCue[] {
-  const cues: SubtitleCue[] = [];
-  const maxWordsPerChunk = 8;
-  const maxCharsPerChunk = 45;
 
-  for (const s of sentences) {
-    if (!s.words || s.words.length === 0) {
-      if (s.text) {
-        cues.push(...splitSentenceIntoCompactChunks(cleanLaoText(s.text), s.startSec, s.endSec, 45));
-      }
-      continue;
-    }
-
-    let currentChunk: typeof s.words = [];
-    let currentLen = 0;
-
-    for (let i = 0; i < s.words.length; i++) {
-      const w = s.words[i];
-      const cleaned = cleanLaoText(w.word);
-      if (!cleaned) continue;
-
-      const candidateLen = currentLen + cleaned.length + 1;
-
-      if (
-        currentChunk.length >= maxWordsPerChunk ||
-        (candidateLen > maxCharsPerChunk && currentChunk.length > 0)
-      ) {
-        pushSentenceKaraokeCue(cues, currentChunk);
-        currentChunk = [w];
-        currentLen = cleaned.length;
-      } else {
-        currentChunk.push(w);
-        currentLen = candidateLen;
-      }
-    }
-
-    if (currentChunk.length > 0) {
-      pushSentenceKaraokeCue(cues, currentChunk);
-    }
-  }
-
-  return sanitizeCues(cues);
-}
-
-function pushSentenceKaraokeCue(
-  cues: SubtitleCue[],
-  chunk: { word: string; startSec: number; endSec: number }[]
-) {
-  if (chunk.length === 0) return;
-
-  const chunkStart = chunk[0].startSec;
-  const chunkEnd = Math.max(chunkStart + 0.4, chunk[chunk.length - 1].endSec);
-
-  cues.push({
-    startSec: chunkStart,
-    endSec: chunkEnd,
-    runs: chunk.map((w) => ({
-      text: cleanLaoText(w.word),
-    })),
-  });
-}
 
