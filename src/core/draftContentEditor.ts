@@ -191,14 +191,34 @@ function resolveFontInfo(fontFamilyOrPath?: string): { fontName: string; fontPat
   return { fontName, fontPath };
 }
 
-/** Real CapCut/JianYing top-level text-material fields (per draft schema references):
- *  font_name, font_size, text_color, border_color, border_width, has_shadow, shadow_color,
- *  shadow_distance, background_color, text_alignment (0=left/1=centre/2=right), vertical.
- *  The previous code invented field names (stroke_color/stroke_width/has_stroke/alignment:
- *  "center"/animation_mode/font_family/font_title/...) that CapCut's schema doesn't recognize,
- *  so the border (outline) and background-banner settings were silently no-ops even after the
- *  fill-color fix above. */
+function ensureFontMaterial(json: any, fontName: string, fontPath: string): string {
+  json.materials = json.materials ?? {};
+  json.materials.fonts = json.materials.fonts ?? [];
+
+  let fontMat = json.materials.fonts.find(
+    (f: any) => f.name === fontName || f.title === fontName
+  );
+
+  if (!fontMat) {
+    const fontId = randomUUID();
+    fontMat = {
+      id: fontId,
+      name: fontName,
+      path: fontPath,
+      resource_id: "",
+      title: fontName,
+      type: "font",
+    };
+    json.materials.fonts.push(fontMat);
+  } else if (fontPath && fontMat.path !== fontPath) {
+    fontMat.path = fontPath;
+  }
+
+  return fontMat.id;
+}
+
 function buildTextMaterialFields(
+  fontId: string,
   fontName: string,
   fontPath: string,
   fontSizePx: number,
@@ -208,8 +228,10 @@ function buildTextMaterialFields(
   backgroundEnabled: boolean
 ): any {
   return {
+    font_id: fontId,
     font_name: fontName,
     font_path: fontPath,
+    font_title: fontName,
     font_size: fontSizePx,
     text_color: toRgbaHex(colorHex),
     border_color: toRgbaHex(strokeColorHex || "#000000"),
@@ -276,6 +298,7 @@ export function insertLaoSubtitles(
   const strokeWidthVal = strokeWidthToCapCut(style.strokeWidth);
   const strokeRgb = hexToRgbFloat(style.strokeColor || "#000000");
   const { fontName, fontPath } = resolveFontInfo(style.fontFamily);
+  const fontId = ensureFontMaterial(json, fontName, fontPath);
 
   let count = 0;
   for (const cue of cues) {
@@ -315,9 +338,10 @@ export function insertLaoSubtitles(
             {
               fill: buildFill(baseRgb),
               font: {
-                id: "",
+                id: fontId,
                 path: fontPath,
                 name: fontName,
+                title: fontName,
               },
               size: fontSizePx,
               range: [0, utf16LEByteLen(combinedText)],
@@ -336,6 +360,7 @@ export function insertLaoSubtitles(
           text: combinedText,
         }),
         ...buildTextMaterialFields(
+          fontId,
           fontName,
           fontPath,
           fontSizePx,
@@ -543,6 +568,7 @@ function buildStylesForActiveRun(
   runRanges: { startByte: number; endByte: number }[],
   combinedByteLen: number,
   activeRunIndex: number,
+  fontId: string,
   fontName: string,
   fontPath: string,
   fontSizePx: number,
@@ -560,7 +586,7 @@ function buildStylesForActiveRun(
     if (range.startByte > pos) {
       styles.push({
         fill: buildFill(baseRgb),
-        font: { id: "", path: fontPath, name: fontName },
+        font: { id: fontId, path: fontPath, name: fontName, title: fontName },
         size: fontSizePx,
         bold: false,
         range: [pos, range.startByte - pos],
@@ -571,7 +597,7 @@ function buildStylesForActiveRun(
     const isHighlight = i === activeRunIndex;
     styles.push({
       fill: buildFill(isHighlight ? highlightRgb : baseRgb),
-      font: { id: "", path: fontPath, name: fontName },
+      font: { id: fontId, path: fontPath, name: fontName, title: fontName },
       size: fontSizePx,
       bold: false,
       range: [range.startByte, range.endByte - range.startByte],
@@ -585,7 +611,7 @@ function buildStylesForActiveRun(
   if (pos < combinedByteLen) {
     styles.push({
       fill: buildFill(baseRgb),
-      font: { id: "", path: fontPath, name: fontName },
+      font: { id: fontId, path: fontPath, name: fontName, title: fontName },
       size: fontSizePx,
       bold: false,
       range: [pos, combinedByteLen - pos],
@@ -613,6 +639,7 @@ function insertKaraokeSubSegments(
   const { combinedText, ranges: runRanges } = buildUtf16RunRanges(cue.runs);
   const combinedByteLen = utf16LEByteLen(combinedText);
   const { fontName, fontPath } = resolveFontInfo(style.fontFamily);
+  const fontId = ensureFontMaterial(json, fontName, fontPath);
   const strokeWidthVal = strokeWidthToCapCut(style.strokeWidth);
   const strokeRgb = hexToRgbFloat(style.strokeColor || "#000000");
 
@@ -645,7 +672,7 @@ function insertKaraokeSubSegments(
     content: JSON.stringify({
       styles: [{
         fill: buildFill(baseRgb),
-        font: { id: "", path: fontPath, name: fontName },
+        font: { id: fontId, path: fontPath, name: fontName, title: fontName },
         size: fontSizePx,
         bold: false,
         range: [0, combinedByteLen],
@@ -654,6 +681,7 @@ function insertKaraokeSubSegments(
       text: combinedText,
     }),
     ...buildTextMaterialFields(
+      fontId,
       fontName,
       fontPath,
       fontSizePx,
@@ -712,6 +740,7 @@ function insertKaraokeSubSegments(
       runRanges,
       combinedByteLen,
       wi,
+      fontId,
       fontName,
       fontPath,
       fontSizePx,
@@ -730,6 +759,7 @@ function insertKaraokeSubSegments(
         text: combinedText,
       }),
       ...buildTextMaterialFields(
+        fontId,
         fontName,
         fontPath,
         fontSizePx,

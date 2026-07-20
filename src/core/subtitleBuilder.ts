@@ -283,14 +283,12 @@ function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
 }
 
 /**
- * Full-sentence style Karaoke cues:
- * Groups words into longer natural sentence phrases (6-8 words per cue)
- * so the color highlight sweeps smoothly across full phrases on screen.
+ * Fast-paced social media style karaoke cues:
+ * Groups words into 1-2 word chunks per cue.
  */
 function buildKaraokeCues(sentences: TranscribedSentence[]): SubtitleCue[] {
   const cues: SubtitleCue[] = [];
-  const maxWordsPerChunk = 8;
-  const maxCharsPerChunk = 45;
+  const chunkSize = 4;
 
   for (const s of sentences) {
     if (!s.words || s.words.length === 0) {
@@ -300,63 +298,33 @@ function buildKaraokeCues(sentences: TranscribedSentence[]): SubtitleCue[] {
       continue;
     }
 
-    let currentChunk: typeof s.words = [];
-    let currentLen = 0;
+    for (let i = 0; i < s.words.length; i += chunkSize) {
+      const chunk = s.words.slice(i, i + chunkSize);
+      let chunkStart = chunk[0].startSec;
+      let chunkEnd = chunk[chunk.length - 1].endSec;
 
-    for (let i = 0; i < s.words.length; i++) {
-      const w = s.words[i];
-      const cleaned = cleanLaoText(w.word);
-      if (!cleaned) continue;
-
-      const candidateLen = currentLen + cleaned.length + 1;
-
-      if (
-        currentChunk.length >= maxWordsPerChunk ||
-        (candidateLen > maxCharsPerChunk && currentChunk.length > 0)
-      ) {
-        const nextWord = i < s.words.length ? s.words[i] : null;
-        pushKaraokeCue(cues, currentChunk, nextWord);
-        currentChunk = [w];
-        currentLen = cleaned.length;
-      } else {
-        currentChunk.push(w);
-        currentLen = candidateLen;
+      if (i + chunkSize < s.words.length) {
+        const nextWord = s.words[i + chunkSize];
+        if (nextWord.startSec > chunkStart && nextWord.startSec - chunkEnd < 0.35) {
+          chunkEnd = nextWord.startSec;
+        }
       }
-    }
 
-    if (currentChunk.length > 0) {
-      pushKaraokeCue(cues, currentChunk, null);
+      if (chunkEnd - chunkStart < 0.3) {
+        chunkEnd = chunkStart + 0.3;
+      }
+
+      cues.push({
+        startSec: chunkStart,
+        endSec: chunkEnd,
+        runs: chunk.map((w) => ({
+          text: cleanLaoText(w.word),
+          highlightAt: { startSec: w.startSec, endSec: w.endSec },
+        })),
+      });
     }
   }
 
   return sanitizeCues(cues);
-}
-
-function pushKaraokeCue(
-  cues: SubtitleCue[],
-  chunk: { word: string; startSec: number; endSec: number }[],
-  nextWord: { word: string; startSec: number; endSec: number } | null
-) {
-  if (chunk.length === 0) return;
-
-  const chunkStart = chunk[0].startSec;
-  let chunkEnd = chunk[chunk.length - 1].endSec;
-
-  if (nextWord && nextWord.startSec > chunkStart && nextWord.startSec - chunkEnd < 0.4) {
-    chunkEnd = nextWord.startSec;
-  }
-
-  if (chunkEnd - chunkStart < 0.4) {
-    chunkEnd = chunkStart + 0.4;
-  }
-
-  cues.push({
-    startSec: chunkStart,
-    endSec: chunkEnd,
-    runs: chunk.map((w) => ({
-      text: cleanLaoText(w.word),
-      highlightAt: { startSec: w.startSec, endSec: w.endSec },
-    })),
-  });
 }
 
