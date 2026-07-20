@@ -171,11 +171,24 @@ function resolveTransform(position: SubtitlePosition): { x: number; y: number } 
   }
 }
 
-function resolveFontInfo(_fontFamily?: string): { fontName: string; fontPath: string } {
-  return {
-    fontName: "Noto Sans Lao Regular",
-    fontPath: "Noto Sans Lao Regular",
-  };
+const LAO_FONT_FILE_PATH = "C:/Users/SPCOM14400FF/AppData/Local/Microsoft/Windows/Fonts/NotoSansLao-VariableFont_wdth,wght.ttf";
+function resolveFontInfo(fontFamilyOrPath?: string): { fontName: string; fontPath: string } {
+  const defaultFontName = "Noto Sans Lao Regular";
+  const defaultFontPath = LAO_FONT_FILE_PATH;
+
+  let fontName = defaultFontName;
+  let fontPath = defaultFontPath;
+
+  if (fontFamilyOrPath) {
+    if (fontFamilyOrPath.endsWith(".ttf") || fontFamilyOrPath.endsWith(".otf") || fontFamilyOrPath.includes("/") || fontFamilyOrPath.includes("\\")) {
+      fontPath = fontFamilyOrPath;
+      fontName = "Noto Sans Lao Regular";
+    } else {
+      fontName = fontFamilyOrPath;
+    }
+  }
+
+  return { fontName, fontPath };
 }
 
 /** Real CapCut/JianYing top-level text-material fields (per draft schema references):
