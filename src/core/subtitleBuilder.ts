@@ -283,48 +283,69 @@ function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
 }
 
 /**
- * Fast-paced social media style karaoke cues:
- * Groups words into 1-2 word chunks per cue.
+ * Full-sentence Karaoke cues for CapCut built-in Karaoke text animation:
+ * Groups words into natural sentence phrases (6-8 words per cue)
+ * so CapCut's native Karaoke animation sweeps smoothly across full phrases.
  */
 function buildKaraokeCues(sentences: TranscribedSentence[]): SubtitleCue[] {
   const cues: SubtitleCue[] = [];
-  const chunkSize = 4;
+  const maxWordsPerChunk = 8;
+  const maxCharsPerChunk = 45;
 
   for (const s of sentences) {
     if (!s.words || s.words.length === 0) {
       if (s.text) {
-        cues.push(...splitSentenceIntoCompactChunks(cleanLaoText(s.text), s.startSec, s.endSec));
+        cues.push(...splitSentenceIntoCompactChunks(cleanLaoText(s.text), s.startSec, s.endSec, 45));
       }
       continue;
     }
 
-    for (let i = 0; i < s.words.length; i += chunkSize) {
-      const chunk = s.words.slice(i, i + chunkSize);
-      let chunkStart = chunk[0].startSec;
-      let chunkEnd = chunk[chunk.length - 1].endSec;
+    let currentChunk: typeof s.words = [];
+    let currentLen = 0;
 
-      if (i + chunkSize < s.words.length) {
-        const nextWord = s.words[i + chunkSize];
-        if (nextWord.startSec > chunkStart && nextWord.startSec - chunkEnd < 0.35) {
-          chunkEnd = nextWord.startSec;
-        }
+    for (let i = 0; i < s.words.length; i++) {
+      const w = s.words[i];
+      const cleaned = cleanLaoText(w.word);
+      if (!cleaned) continue;
+
+      const candidateLen = currentLen + cleaned.length + 1;
+
+      if (
+        currentChunk.length >= maxWordsPerChunk ||
+        (candidateLen > maxCharsPerChunk && currentChunk.length > 0)
+      ) {
+        pushSentenceKaraokeCue(cues, currentChunk);
+        currentChunk = [w];
+        currentLen = cleaned.length;
+      } else {
+        currentChunk.push(w);
+        currentLen = candidateLen;
       }
+    }
 
-      if (chunkEnd - chunkStart < 0.3) {
-        chunkEnd = chunkStart + 0.3;
-      }
-
-      cues.push({
-        startSec: chunkStart,
-        endSec: chunkEnd,
-        runs: chunk.map((w) => ({
-          text: cleanLaoText(w.word),
-          highlightAt: { startSec: w.startSec, endSec: w.endSec },
-        })),
-      });
+    if (currentChunk.length > 0) {
+      pushSentenceKaraokeCue(cues, currentChunk);
     }
   }
 
   return sanitizeCues(cues);
+}
+
+function pushSentenceKaraokeCue(
+  cues: SubtitleCue[],
+  chunk: { word: string; startSec: number; endSec: number }[]
+) {
+  if (chunk.length === 0) return;
+
+  const chunkStart = chunk[0].startSec;
+  const chunkEnd = Math.max(chunkStart + 0.4, chunk[chunk.length - 1].endSec);
+
+  cues.push({
+    startSec: chunkStart,
+    endSec: chunkEnd,
+    runs: chunk.map((w) => ({
+      text: cleanLaoText(w.word),
+    })),
+  });
 }
 

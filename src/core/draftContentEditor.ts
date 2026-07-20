@@ -622,6 +622,34 @@ function buildStylesForActiveRun(
   return styles;
 }
 
+function addKaraokeAnimationMaterial(json: any, durationUs: number): string {
+  json.materials = json.materials ?? {};
+  json.materials.material_animations = json.materials.material_animations ?? [];
+
+  const animId = randomUUID();
+  json.materials.material_animations.push({
+    animations: [
+      {
+        category_id: "caption",
+        category_name: "Caption",
+        duration: durationUs,
+        id: randomUUID(),
+        material_type: "caption",
+        name: "Karaoke",
+        panel: "caption",
+        path: "",
+        platform: "all",
+        resource_id: "karaoke",
+        start: 0,
+        type: "caption",
+      },
+    ],
+    id: animId,
+    type: "sticker_animation",
+  });
+  return animId;
+}
+
 function insertKaraokeSubSegments(
   json: any,
   textTrack: any,
@@ -636,8 +664,7 @@ function insertKaraokeSubSegments(
   highlightRgb: [number, number, number],
   linkSubtitleToClip: boolean
 ): number {
-  const { combinedText, ranges: runRanges } = buildUtf16RunRanges(cue.runs);
-  const combinedByteLen = utf16LEByteLen(combinedText);
+  const combinedText = joinLaoWords(cue.runs.map((r) => r.text));
   const { fontName, fontPath } = resolveFontInfo(style.fontFamily);
   const fontId = ensureFontMaterial(json, fontName, fontPath);
   const strokeWidthVal = strokeWidthToCapCut(style.strokeWidth);
@@ -657,27 +684,30 @@ function insertKaraokeSubSegments(
   json.keyframes = json.keyframes ?? {};
   json.keyframes.texts = json.keyframes.texts ?? [];
 
-  let addedCount = 0;
+  const startUs = mapMediaTimeToTimelineUs(cue.startSec, videoTracks);
+  const endUs = mapMediaTimeToTimelineUs(cue.endSec, videoTracks);
+  const durationUs = Math.max(100_000, endUs - startUs);
 
-  // --- Base segment (full cue, all words, Base Color chosen by user) ---
-  const cueStartUs = mapMediaTimeToTimelineUs(cue.startSec, videoTracks);
-  const cueEndUs   = mapMediaTimeToTimelineUs(cue.endSec, videoTracks);
-  const cueDurUs   = Math.max(100_000, cueEndUs - cueStartUs);
+  const materialId = randomUUID();
+  const animId = addKaraokeAnimationMaterial(json, durationUs);
 
-  const baseMaterialId = randomUUID();
   json.materials.texts.push({
-    id: baseMaterialId,
-    type: "text", sub_type: 0, add_type: 0,
+    id: materialId,
+    type: "text",
+    sub_type: 0,
+    add_type: 0,
     name: combinedText,
     content: JSON.stringify({
-      styles: [{
-        fill: buildFill(baseRgb),
-        font: { id: fontId, path: fontPath, name: fontName, title: fontName },
-        size: fontSizePx,
-        bold: false,
-        range: [0, combinedByteLen],
-        strokes,
-      }],
+      styles: [
+        {
+          fill: buildFill(baseRgb),
+          font: { id: fontId, path: fontPath, name: fontName, title: fontName },
+          size: fontSizePx,
+          bold: false,
+          range: [0, utf16LEByteLen(combinedText)],
+          strokes,
+        },
+      ],
       text: combinedText,
     }),
     ...buildTextMaterialFields(
@@ -699,10 +729,10 @@ function insertKaraokeSubSegments(
     property_type: "scale",
   });
 
-  const baseSegment: any = {
+  const segment: any = {
     id: randomUUID(),
-    material_id: baseMaterialId,
-    target_timerange: { start: cueStartUs, duration: cueDurUs },
+    material_id: materialId,
+    target_timerange: { start: startUs, duration: durationUs },
     clip: {
       alpha: 1.0,
       flip: { horizontal: false, vertical: false },
@@ -711,97 +741,19 @@ function insertKaraokeSubSegments(
       transform: resolveTransform(style.position),
     },
     keyframe_refs: [baseKfId],
-    extra_material_refs: [] as string[],
+    extra_material_refs: [animId],
     render_index: 0,
   };
+
   if (linkSubtitleToClip) {
-    const overlappingClip = findOverlappingVideoSegment(videoTracks, cueStartUs, cueStartUs + cueDurUs);
-    if (overlappingClip) baseSegment.extra_material_refs.push(overlappingClip.id);
-  }
-  textTrack.segments.push(baseSegment);
-  addedCount++;
-
-  // --- Highlight segments (Highlight clip per word on highlightTrack) ---
-  for (let wi = 0; wi < cue.runs.length; wi++) {
-    const run = cue.runs[wi];
-    if (!run.highlightAt) continue;
-
-    const wordStartUs = mapMediaTimeToTimelineUs(run.highlightAt.startSec, videoTracks);
-    let wordEndUs: number;
-    if (wi < cue.runs.length - 1 && cue.runs[wi + 1].highlightAt) {
-      wordEndUs = mapMediaTimeToTimelineUs(cue.runs[wi + 1].highlightAt!.startSec, videoTracks);
-    } else {
-      wordEndUs = cueEndUs;
-    }
-    const wordDurUs = Math.max(80_000, wordEndUs - wordStartUs);
-    const wordText = run.text;
-
-    const activeStyles = buildStylesForActiveRun(
-      runRanges,
-      combinedByteLen,
-      wi,
-      fontId,
-      fontName,
-      fontPath,
-      fontSizePx,
-      baseRgb,
-      highlightRgb,
-      strokes
-    );
-
-    const hlMaterialId = randomUUID();
-    json.materials.texts.push({
-      id: hlMaterialId,
-      type: "text", sub_type: 0, add_type: 0,
-      name: wordText,
-      content: JSON.stringify({
-        styles: activeStyles,
-        text: combinedText,
-      }),
-      ...buildTextMaterialFields(
-        fontId,
-        fontName,
-        fontPath,
-        fontSizePx,
-        highlightHex,
-        style.strokeColor,
-        strokeWidthVal,
-        false
-      ),
-    });
-
-    const hlKfId = randomUUID();
-    json.keyframes.texts.push({
-      id: hlKfId,
-      keyframe_list: [{ id: randomUUID(), property_type: "scale", time_offset: 0, values: [1.0, 1.0] }],
-      property_type: "scale",
-    });
-
-    const hlSegment: any = {
-      id: randomUUID(),
-      material_id: hlMaterialId,
-      target_timerange: { start: wordStartUs, duration: wordDurUs },
-      clip: {
-        alpha: 1.0,
-        flip: { horizontal: false, vertical: false },
-        rotation: 0.0,
-        scale: { x: 1.0, y: 1.0 },
-        transform: resolveTransform(style.position),
-      },
-      keyframe_refs: [hlKfId],
-      extra_material_refs: [] as string[],
-      render_index: 0,
-    };
-    if (linkSubtitleToClip) {
-      const overlappingClip = findOverlappingVideoSegment(videoTracks, wordStartUs, wordStartUs + wordDurUs);
-      if (overlappingClip) hlSegment.extra_material_refs.push(overlappingClip.id);
-    }
-    highlightTrack.segments.push(hlSegment);
-    addedCount++;
+    const overlappingClip = findOverlappingVideoSegment(videoTracks, startUs, startUs + durationUs);
+    if (overlappingClip) segment.extra_material_refs.push(overlappingClip.id);
   }
 
-  return addedCount;
+  textTrack.segments.push(segment);
+  return 1;
 }
+
 
 function findOverlappingVideoSegment(videoTracks: any[], startUs: number, endUs: number): any | null {
   for (const track of videoTracks) {
