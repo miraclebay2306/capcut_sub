@@ -1,0 +1,49 @@
+{
+  "name": "capcut-lao-subtitler",
+  "productName": "CapCut Lao Subtitler",
+  "version": "0.1.0",
+  "description": "Automates Dead Air trimming and Lao subtitle generation directly on the CapCut PC timeline by editing draft_content.json natively.",
+  "main": "dist/electron/main.js",
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "clean": "rimraf dist release",
+    "build:ts": "tsc -p tsconfig.json",
+    "dev": "npm run build:ts && electron .",
+    "watch": "tsc -p tsconfig.json --watch",
+    "start": "electron .",
+    "dist": "npm run clean && npm run build:ts && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
+    "ts-node": "^10.9.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "cross-env": "^7.0.3",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "rimraf": "^5.0.7",
+    "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "com.local.capcut-lao-subtitler",
+    "productName": "CapCut Lao Subtitler",
+    "files": [
+      "dist/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/ffprobe-static/**"
+    ]
+  }
+}

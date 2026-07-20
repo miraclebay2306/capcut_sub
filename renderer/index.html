@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' https://cdn.tailwindcss.com 'unsafe-inline';" />
+<title>CapCut Lao Subtitler</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          app: '#14151A',
+          panel: '#1C1E24',
+          panel2: '#20222A',
+          border: '#2A2C34',
+          ink: '#E8E6E1',
+          muted: '#8B8D97',
+          gold: '#F2C641',
+          teal: '#4FD1C5',
+          danger: '#E5484D',
+        },
+        fontFamily: {
+          display: ['"Space Grotesk"', '"Noto Sans Lao"', 'sans-serif'],
+          body: ['"Noto Sans Lao"', 'Inter', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+      },
+    },
+  }
+</script>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-app text-ink font-body antialiased">
+
+  <!-- ===================== HEADER / SIGNATURE WAVEFORM ===================== -->
+  <header class="border-b border-border px-8 py-5 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <div>
+        <h1 class="font-display text-xl font-semibold tracking-tight">CapCut Lao Subtitler</h1>
+        <p class="text-xs text-muted mt-0.5">ດັດແກ້ draft_content.json ໂດຍກົງ · ສາມາດແກ້ໄຂຕໍ່ໃນ CapCut ໄດ້ 100%</p>
+      </div>
+    </div>
+    <div id="waveform-signature" class="hidden md:block" aria-hidden="true"></div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-8 py-8 space-y-8 pb-28">
+
+    <!-- ===================== 1. FILE & AUTH ===================== -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>ໂຄງການ &amp; ການຢືນຢັນຕົວຕົນ</h2>
+        <p>ກຳນົດໂຟນເດີໂຄງການ CapCut ແລະ Google Gemini API Key ຂອງທ່ານ.</p>
+      </div>
+      <div class="panel-body grid gap-5">
+        <div>
+          <label class="field-label" for="apiKey">Gemini API Key</label>
+          <div class="flex gap-2">
+            <input id="apiKey" type="password" placeholder="Gemini API Key…" class="input flex-1 font-mono text-sm" />
+            <button id="toggleKeyVisibility" type="button" class="btn-ghost text-xs">ສະແດງ</button>
+          </div>
+          <label class="mt-2 inline-flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
+            <input id="rememberKey" type="checkbox" class="checkbox" />
+            ຈື່ກຸນແຈໃນອຸປະກອນນີ້ (ເຂົ້າລະຫັດປອດໄພດ້ວຍ OS credential store)
+          </label>
+        </div>
+
+        <div>
+          <label class="field-label" for="projectDir">ໂຟນເດີໂຄງການ CapCut</label>
+          <div class="flex gap-2">
+            <input id="projectDir" type="text" readonly placeholder="ກົດ ເລືອກ... ເພື່ອເລືອກໂຟນເດີໂຄງການ…" class="input flex-1 font-mono text-sm text-muted" />
+            <button id="browseDir" type="button" class="btn-secondary text-sm whitespace-nowrap">ເລືອກ…</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="waveform-divider" aria-hidden="true"></div>
+
+    <!-- ===================== 2. TYPOGRAPHY ===================== -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>ຮູບແບບໂຕໜັງສືຊັບໄຕເຕີ້ນລາວ</h2>
+        <p>ການຕັ້ງຄ່າຮູບແບບພື້ນຖານ ແລະ ການຄວບຄຸມເສັ້ນຂອບ/ພື້ນຫຼັງ/ຟອນ.</p>
+      </div>
+      <div class="panel-body grid gap-6">
+
+        <div class="grid grid-cols-3 gap-4">
+          <div>
+            <label class="field-label">ຂະໜາດຟອນ</label>
+            <select id="fontSize" class="input text-sm">
+              <option value="small">ນ້ອຍ</option>
+              <option value="medium" selected>ກາງ</option>
+              <option value="large">ໃຫຍ່</option>
+              <option value="xl">ໃຫຍ່ພິເສດ</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">ສີໂຕໜັງສື</label>
+            <select id="textColor" class="input text-sm">
+              <option value="white" selected>ຂາວ</option>
+              <option value="yellow">ເຫຼືອງ</option>
+              <option value="neon_green">ຂຽວເນອອນ</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">ຕຳແໜ່ງ</label>
+            <select id="position" class="input text-sm">
+              <option value="lower_center" selected>ค่อนล่างกลาง (Lower Center - ขยับลงมาจากกลาง)</option>
+              <option value="bottom_center">ล่างสุด (Bottom Center)</option>
+              <option value="center_screen">กลางหน้าจอ (Center Screen)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="border-t border-border pt-5">
+          <p class="text-xs uppercase tracking-wide text-muted mb-3 font-medium">ຂັ້ນສູງ</p>
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label class="field-label" for="strokeColor">ສີເສັ້ນຂອບ</label>
+              <input id="strokeColor" type="color" value="#000000" class="input h-10 p-1" />
+            </div>
+            <div>
+              <label class="field-label" for="strokeWidth">ຄວາມກວ້າງເສັ້ນຂອບ</label>
+              <div class="flex items-center gap-2">
+                <input id="strokeWidth" type="number" value="3" min="0" class="input font-mono text-sm" />
+                <span class="text-muted text-sm">px</span>
+              </div>
+            </div>
+            <div class="flex items-end pb-2">
+              <label class="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input id="backgroundBanner" type="checkbox" class="checkbox" />
+                ແຖບພື້ນຫຼັງ / ເງົາ
+              </label>
+            </div>
+          <div class="mt-4">
+            <label class="field-label" for="fontFamily">ຟອນລາວໃນລະບົບ (Lao System Font)</label>
+            <input id="fontFamily" type="text" value="Noto Sans Lao Regular" placeholder="ຕົວຢ່າງ: Noto Sans Lao Regular, Phetsarath OT, Saysettha OT" class="input text-sm" />
+          </div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-border">
+          <label class="field-label mb-2 flex items-center justify-between">
+            <span>ຕົວຢ່າງຊັບໄຕເຕີ້ນ (Live Subtitle Preview)</span>
+            <span class="text-xs text-muted font-normal">ສະແດງຕົວຢ່າງຮູບແບບໂຕໜັງສືໃນໜ້າຈໍ</span>
+          </label>
+          <div class="preview-screen">
+            <div id="subtitlePreviewText" class="preview-text-box">
+              ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າสู่ CapCut Lao Subtitler
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="waveform-divider" aria-hidden="true"></div>
+
+    <!-- ===================== 3. ANIMATION MODE ===================== -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>ເອນິເມຊັນ &amp; ເລເອົາຕ໌ຊັບໄຕເຕີ້ນ</h2>
+        <p>ຮູບແບບການສະແດງ ແລະ ການເຄື່ອນໄຫວຂອງຊັບໄຕເຕີ້ນໃຫ້ກົງກັບສຽງເວົ້າ.</p>
+      </div>
+      <div class="panel-body grid grid-cols-3 gap-4" id="animationModeGroup">
+        <button type="button" data-mode="sentence" class="mode-card">
+          <span class="mode-card-title">ແບບທັງປະໂຫຍດ</span>
+          <span class="mode-card-desc">ສະແດງປະໂຫຍດເຕັມແບບດັ້ງເດີມ</span>
+        </button>
+        <button type="button" data-mode="word_by_word" class="mode-card">
+          <span class="mode-card-title">ແບບທີລະຄຳ</span>
+          <span class="mode-card-desc">ໂຕໜັງສືເຄື່ອນໄຫວຕາມທີລະຄຳເວົ້າ</span>
+        </button>
+        <button type="button" data-mode="karaoke" class="mode-card is-selected">
+          <span class="mode-card-title">ແບບຄາລາໂອເກະ</span>
+          <span class="mode-card-desc">ປ່ຽນສີໂຕໜັງສືຕາມຄຳເວົ້າ</span>
+        </button>
+      </div>
+    </section>
+
+    <div class="waveform-divider" aria-hidden="true"></div>
+
+    <!-- ===================== 4. AI TRANSCRIPTION ===================== -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Google Gemini AI ຖອດຂໍ້ຄວາມ</h2>
+        <p>ເລືອກ Gemini Model ຕາມຄວາມຕ້ອງການ.</p>
+      </div>
+      <div class="panel-body grid gap-5">
+        <div>
+          <label class="field-label" for="transcriptionEngine">Transcription Engine</label>
+          <select id="transcriptionEngine" class="input text-sm font-mono max-w-md">
+            <option value="gemini" selected>Google Gemini AI</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label" for="transcriptionModel">Model</label>
+          <select id="transcriptionModel" class="input text-sm font-mono max-w-md"></select>
+        </div>
+        <div>
+          <label class="field-label">ຮູບແບບພາສາເວົ້າ</label>
+          <div class="flex gap-3">
+            <label class="radio-pill">
+              <input type="radio" name="speechStyle" value="polished" />
+              <span>ພາສາທາງການ / ສະອາດ (Polished)</span>
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="speechStyle" value="verbatim" checked />
+              <span>ເວົ້າແນວໃດຂຽນແນວນັ້ນ (Verbatim)</span>
+            </label>
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="glossary">ຄຳສັບສະເພາະ / ຄຳສັບພິເສດ (Glossary)</label>
+          <textarea id="glossary" rows="3" placeholder="Next.js, Tailwind, CapCut, ຊື່ແບຣນ..." class="input text-sm font-mono resize-none"></textarea>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================== RUN BAR / PROGRESS ===================== -->
+  <footer class="fixed bottom-0 left-0 right-0 border-t border-border bg-panel/95 backdrop-blur px-8 py-4">
+    <div class="max-w-5xl mx-auto flex items-center gap-4">
+      <button id="runBtn" class="btn-primary">ເລີ່ມປະມວນຜົນ</button>
+      <div id="progressWrap" class="flex-1 hidden">
+        <div class="flex items-center justify-between text-xs mb-1">
+          <span id="progressLabel" class="text-muted">ກຳລັງປະມວນຜົນ...</span>
+          <span id="progressPercent" class="font-mono text-muted">0%</span>
+        </div>
+        <div class="progress-track">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+      </div>
+      <span id="statusMessage" class="text-xs text-muted flex-1"></span>
+    </div>
+  </footer>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
