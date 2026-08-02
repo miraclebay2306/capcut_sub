@@ -6,7 +6,7 @@
 <title>CapCut Lao Subtitler</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
   tailwind.config = {
     theme: {
@@ -23,9 +23,9 @@
           danger: '#E5484D',
         },
         fontFamily: {
-          display: ['"Space Grotesk"', '"Noto Sans Lao"', 'sans-serif'],
-          body: ['"Noto Sans Lao"', 'Inter', 'sans-serif'],
-          mono: ['"JetBrains Mono"', 'monospace'],
+          display: ['"Noto Sans Lao"', 'sans-serif'],
+          body: ['"Noto Sans Lao"', 'sans-serif'],
+          mono: ['"Noto Sans Lao"', 'sans-serif'],
         },
       },
     },
@@ -108,9 +108,9 @@
           <div>
             <label class="field-label">ຕຳແໜ່ງ</label>
             <select id="position" class="input text-sm">
-              <option value="lower_center" selected>ค่อนล่างกลาง (Lower Center - ขยับลงมาจากกลาง)</option>
-              <option value="bottom_center">ล่างสุด (Bottom Center)</option>
-              <option value="center_screen">กลางหน้าจอ (Center Screen)</option>
+              <option value="lower_center" selected>ທາງລຸ່ມກາງ (Lower Center)</option>
+              <option value="bottom_center">ລຸ່ມສຸດ (Bottom Center)</option>
+              <option value="center_screen">ກາງໜ້າຈໍ (Center Screen)</option>
             </select>
           </div>
         </div>
@@ -136,8 +136,12 @@
               </label>
             </div>
           <div class="mt-4">
-            <label class="field-label" for="fontFamily">ຟອນລາວໃນລະບົບ (Lao System Font)</label>
-            <input id="fontFamily" type="text" value="Noto Sans Lao Regular" placeholder="ຕົວຢ່າງ: Noto Sans Lao Regular, Phetsarath OT, Saysettha OT" class="input text-sm" />
+            <label class="field-label" for="fontFamilySelect">ຟອນລາວ (Lao Subtitle Font)</label>
+            <div class="flex gap-2">
+              <select id="fontFamilySelect" class="input text-sm max-w-md">
+                <option value="Noto Sans Lao Regular" selected>Noto Sans Lao Regular</option>
+              </select>
+            </div>
           </div>
         </div>
         <div class="mt-4 pt-4 border-t border-border">
@@ -147,7 +151,7 @@
           </label>
           <div class="preview-screen">
             <div id="subtitlePreviewText" class="preview-text-box">
-              ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າสู่ CapCut Lao Subtitler
+              ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler
             </div>
           </div>
         </div>
@@ -163,11 +167,11 @@
         <p>ຮູບແບບການສະແດງ ແລະ ການເຄື່ອນໄຫວຂອງຊັບໄຕເຕີ້ນໃຫ້ກົງກັບສຽງເວົ້າ.</p>
       </div>
       <div class="panel-body grid grid-cols-2 gap-4" id="animationModeGroup">
-        <button type="button" data-mode="sentence" class="mode-card">
+        <button type="button" data-mode="sentence" class="mode-card is-selected">
           <span class="mode-card-title">ແບບທັງປະໂຫຍດ</span>
           <span class="mode-card-desc">ສະແດງປະໂຫຍດເຕັມແບບດັ້ງເດີມ</span>
         </button>
-        <button type="button" data-mode="word_by_word" class="mode-card is-selected">
+        <button type="button" data-mode="word_by_word" class="mode-card">
           <span class="mode-card-title">ແບບທີລະຄຳ</span>
           <span class="mode-card-desc">ໂຕໜັງສືເຄື່ອນໄຫວຕາມທີລະຄຳເວົ້າ</span>
         </button>

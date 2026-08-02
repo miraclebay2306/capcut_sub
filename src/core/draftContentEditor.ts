@@ -12,51 +12,8 @@ import {
 
 const ALL_TIME_UNIT_US = 1_000_000; // CapCut timerange values are in microseconds
 
-/** CapCut/JianYing text-style `range` values are UTF-16 LE byte offsets, NOT UTF-8 byte
- *  offsets. JS strings are already UTF-16 internally, so `.length` is the UTF-16 *code unit*
- *  count — multiply by 2 to get the byte offset CapCut expects. Lao characters (U+0E80-U+0EFF)
- *  sit in the BMP (1 code unit = 2 bytes), so using UTF-8 byte length (3 bytes/char) here was
- *  producing wrong ranges and misaligned/ignored per-word styling. */
 function utf16LEByteLen(s: string): number {
   return s.length * 2;
-}
-
-function buildUtf16RunRanges(
-  runs: { text: string }[]
-): { combinedText: string; ranges: { startByte: number; endByte: number }[] } {
-  const isLao = (str: string) => /[\u0E80-\u0EFF]/.test(str);
-  const ranges: { startByte: number; endByte: number }[] = [];
-
-  let combinedText = "";
-  let currentByteOffset = 0;
-
-  for (let i = 0; i < runs.length; i++) {
-    const rawText = cleanLaoText(runs[i].text);
-    if (!rawText) continue;
-
-    let prefix = "";
-    if (i > 0 && combinedText.length > 0) {
-      const prevChar = combinedText[combinedText.length - 1];
-      if (isLao(prevChar) && isLao(rawText[0])) {
-        prefix = "";
-      } else {
-        prefix = " ";
-      }
-    }
-
-    combinedText += prefix;
-    currentByteOffset += utf16LEByteLen(prefix);
-
-    const startByte = currentByteOffset;
-    combinedText += rawText;
-    const runBytes = utf16LEByteLen(rawText);
-    const endByte = startByte + runBytes;
-
-    ranges.push({ startByte, endByte });
-    currentByteOffset = endByte;
-  }
-
-  return { combinedText: cleanLaoText(combinedText), ranges };
 }
 
 export interface LoadedDraft {
@@ -171,24 +128,98 @@ function resolveTransform(position: SubtitlePosition): { x: number; y: number } 
   }
 }
 
-const LAO_FONT_FILE_PATH = "C:/Users/SPCOM14400FF/AppData/Local/Microsoft/Windows/Fonts/NotoSansLao-VariableFont_wdth,wght.ttf";
+function getStaticLaoFontPath(): string {
+  const localAppData = process.env.LOCALAPPDATA || "";
+  const winDir = process.env.WINDIR || "C:/Windows";
+
+  const fontFilenames = [
+    "NotoSansLao-VariableFont_wdth,wght.ttf",
+    "NotoSansLao-Regular.ttf",
+    "NotoSansLao.ttf",
+  ];
+
+  const assetFontDir = path.resolve(__dirname, "../../assets/fonts");
+
+  const targetFontDirs = [
+    path.join(localAppData, "Microsoft/Windows/Fonts"),
+    path.join(localAppData, "CapCut/User Data/Resources/Font/SystemFont"),
+  ];
+
+  // Also check CapCut Apps folders (e.g. CapCut/Apps/9.x.x/Resources/Font/SystemFont)
+  const capcutAppsDir = path.join(localAppData, "CapCut/Apps");
+  if (fs.existsSync(capcutAppsDir)) {
+    try {
+      const appVersions = fs.readdirSync(capcutAppsDir);
+      for (const ver of appVersions) {
+        const sysFontDir = path.join(capcutAppsDir, ver, "Resources/Font/SystemFont");
+        if (fs.existsSync(sysFontDir)) {
+          targetFontDirs.push(sysFontDir);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not scan CapCut Apps directory:", e);
+    }
+  }
+
+  // Ensure target directories exist & auto-copy all bundled font variations into them
+  for (const filename of fontFilenames) {
+    const srcAsset = path.join(assetFontDir, filename);
+    if (!fs.existsSync(srcAsset)) continue;
+
+    for (const dir of targetFontDirs) {
+      try {
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        const dstFont = path.join(dir, filename);
+        if (!fs.existsSync(dstFont)) {
+          fs.copyFileSync(srcAsset, dstFont);
+        }
+      } catch (e) {
+        console.warn(`Could not copy font ${filename} to ${dir}:`, e);
+      }
+    }
+  }
+
+  // Build candidate paths in order of preference (checking variable font first, then regular font)
+  const searchDirs = [
+    path.join(localAppData, "Microsoft/Windows/Fonts"),
+    path.join(localAppData, "CapCut/User Data/Resources/Font/SystemFont"),
+    path.join(winDir, "Fonts"),
+    assetFontDir,
+  ];
+
+  for (const dir of searchDirs) {
+    for (const filename of fontFilenames) {
+      const p = path.join(dir, filename);
+      if (fs.existsSync(p)) {
+        return p.replace(/\\/g, "/");
+      }
+    }
+  }
+
+  const fallback = path.join(searchDirs[0], fontFilenames[0]);
+  return fallback.replace(/\\/g, "/");
+}
+
 function resolveFontInfo(fontFamilyOrPath?: string): { fontName: string; fontPath: string } {
   const defaultFontName = "Noto Sans Lao Regular";
-  const defaultFontPath = LAO_FONT_FILE_PATH;
+  const defaultFontPath = getStaticLaoFontPath();
 
   let fontName = defaultFontName;
   let fontPath = defaultFontPath;
 
-  if (fontFamilyOrPath) {
-    if (fontFamilyOrPath.endsWith(".ttf") || fontFamilyOrPath.endsWith(".otf") || fontFamilyOrPath.includes("/") || fontFamilyOrPath.includes("\\")) {
-      fontPath = fontFamilyOrPath;
-      fontName = "Noto Sans Lao Regular";
+  if (fontFamilyOrPath && fontFamilyOrPath.trim().length > 0) {
+    const trimmed = fontFamilyOrPath.trim();
+    if (trimmed.endsWith(".ttf") || trimmed.endsWith(".otf") || trimmed.includes("/") || trimmed.includes("\\")) {
+      fontPath = trimmed.replace(/\\/g, "/");
+      fontName = path.basename(trimmed, path.extname(trimmed));
     } else {
-      fontName = fontFamilyOrPath;
+      fontName = trimmed;
     }
   }
 
-  return { fontName, fontPath };
+  return { fontName, fontPath: fontPath.replace(/\\/g, "/") };
 }
 
 function ensureFontMaterial(json: any, fontName: string, fontPath: string): string {
@@ -205,7 +236,7 @@ function ensureFontMaterial(json: any, fontName: string, fontPath: string): stri
       id: fontId,
       name: fontName,
       path: fontPath,
-      resource_id: "",
+      resource_id: fontName,
       title: fontName,
       type: "font",
     };
@@ -377,13 +408,7 @@ export function insertLaoSubtitles(
       render_index: 0,
     };
 
-    if (config.timeline.linkSubtitleToClip) {
-      const overlappingClip = findOverlappingVideoSegment(videoTracks, startUs, startUs + durationUs);
-      if (overlappingClip) {
-        segment.extra_material_refs.push(overlappingClip.id);
-      }
-    }
-
+    // extra_material_refs is for text animation/effect materials, not video segments
     textTrack.segments.push(segment);
     count++;
   }
@@ -437,74 +462,7 @@ function sanitizeTrackSegments(segments: any[]): void {
   }
 }
 
-interface KaraokeSlice {
-  startSec: number;
-  endSec: number;
-  activeRunIndex: number;
-}
 
-function buildKaraokeSlices(cue: SubtitleCue): KaraokeSlice[] {
-  const slices: KaraokeSlice[] = [];
-  const validRuns = cue.runs.filter((r) => r.highlightAt);
-
-  if (validRuns.length === 0) {
-    if (cue.endSec > cue.startSec) {
-      slices.push({
-        startSec: cue.startSec,
-        endSec: cue.endSec,
-        activeRunIndex: -1,
-      });
-    }
-    return slices;
-  }
-
-  let currentSec = cue.startSec;
-
-  for (let i = 0; i < validRuns.length; i++) {
-    const run = validRuns[i];
-    const hStart = Math.max(cue.startSec, run.highlightAt!.startSec);
-
-    if (hStart > currentSec + 0.02) {
-      slices.push({
-        startSec: currentSec,
-        endSec: hStart,
-        activeRunIndex: i > 0 ? i - 1 : -1,
-      });
-      currentSec = hStart;
-    }
-
-    let hEnd = run.highlightAt!.endSec;
-    if (i < validRuns.length - 1) {
-      const nextStart = validRuns[i + 1].highlightAt!.startSec;
-      if (nextStart > hStart) {
-        hEnd = nextStart;
-      }
-    } else {
-      hEnd = Math.max(hEnd, cue.endSec);
-    }
-
-    hEnd = Math.min(cue.endSec, hEnd);
-
-    if (hEnd > currentSec + 0.02) {
-      slices.push({
-        startSec: currentSec,
-        endSec: hEnd,
-        activeRunIndex: i,
-      });
-      currentSec = hEnd;
-    }
-  }
-
-  if (cue.endSec > currentSec + 0.02) {
-    slices.push({
-      startSec: currentSec,
-      endSec: cue.endSec,
-      activeRunIndex: validRuns.length - 1,
-    });
-  }
-
-  return slices;
-}
 
 function mapMediaTimeToTimelineUs(mediaTimeSec: number, videoTracks: any[]): number {
   const mediaTimeUs = Math.round(mediaTimeSec * ALL_TIME_UNIT_US);
@@ -525,232 +483,7 @@ function mapMediaTimeToTimelineUs(mediaTimeSec: number, videoTracks: any[]): num
   return mediaTimeUs;
 }
 
-function buildStylesForActiveRun(
-  runRanges: { startByte: number; endByte: number }[],
-  combinedByteLen: number,
-  activeRunIndex: number,
-  fontId: string,
-  fontName: string,
-  fontPath: string,
-  fontSizePx: number,
-  baseRgb: [number, number, number],
-  highlightRgb: [number, number, number],
-  strokes: any[]
-): any[] {
-  const styles: any[] = [];
-  let pos = 0;
 
-  for (let i = 0; i < runRanges.length; i++) {
-    const range = runRanges[i];
-
-    // Inter-word gaps / spaces before word i
-    if (range.startByte > pos) {
-      styles.push({
-        fill: buildFill(baseRgb),
-        font: { id: fontId, path: fontPath, name: fontName, title: fontName },
-        size: fontSizePx,
-        bold: false,
-        range: [pos, range.startByte - pos],
-        strokes,
-      });
-    }
-
-    const isHighlight = i === activeRunIndex;
-    styles.push({
-      fill: buildFill(isHighlight ? highlightRgb : baseRgb),
-      font: { id: fontId, path: fontPath, name: fontName, title: fontName },
-      size: fontSizePx,
-      bold: false,
-      range: [range.startByte, range.endByte - range.startByte],
-      strokes,
-    });
-
-    pos = range.endByte;
-  }
-
-  // Inter-word gaps / spaces after the last word
-  if (pos < combinedByteLen) {
-    styles.push({
-      fill: buildFill(baseRgb),
-      font: { id: fontId, path: fontPath, name: fontName, title: fontName },
-      size: fontSizePx,
-      bold: false,
-      range: [pos, combinedByteLen - pos],
-      strokes,
-    });
-  }
-
-  return styles;
-}
-
-function addKaraokeAnimationMaterial(json: any, durationUs: number): string {
-  json.materials = json.materials ?? {};
-  json.materials.material_animations = json.materials.material_animations ?? [];
-
-  const animId = randomUUID();
-  json.materials.material_animations.push({
-    animations: [
-      {
-        category_id: "caption",
-        category_name: "Caption",
-        duration: durationUs,
-        id: randomUUID(),
-        material_type: "caption",
-        name: "Karaoke",
-        panel: "caption",
-        path: "",
-        platform: "all",
-        resource_id: "karaoke",
-        start: 0,
-        type: "caption",
-      },
-    ],
-    id: animId,
-    type: "sticker_animation",
-  });
-  return animId;
-}
-
-function insertKaraokeSubSegments(
-  json: any,
-  textTrack: any,
-  videoTracks: any[],
-  cue: SubtitleCue,
-  style: any,
-  fontSizePx: number,
-  baseRgb: [number, number, number],
-  highlightRgb: [number, number, number],
-  colorHex: string,
-  linkSubtitleToClip: boolean
-): number {
-  const { combinedText, ranges } = buildUtf16RunRanges(cue.runs);
-  if (!combinedText || combinedText.trim().length === 0) return 0;
-
-  const { fontName, fontPath } = resolveFontInfo(style.fontFamily);
-  const fontId = ensureFontMaterial(json, fontName, fontPath);
-  const strokeWidthVal = strokeWidthToCapCut(style.strokeWidth);
-  const strokeRgb = hexToRgbFloat(style.strokeColor || "#000000");
-
-  const strokes =
-    style.strokeWidth > 0
-      ? [
-          {
-            alpha: 1.0,
-            color: strokeRgb,
-            width: strokeWidthVal,
-          },
-        ]
-      : [];
-
-  const slices = buildKaraokeSlices(cue);
-  if (slices.length === 0) return 0;
-
-  let addedCount = 0;
-
-  for (const slice of slices) {
-    const startUs = mapMediaTimeToTimelineUs(slice.startSec, videoTracks);
-    const endUs = mapMediaTimeToTimelineUs(slice.endSec, videoTracks);
-    const durationUs = Math.max(50_000, endUs - startUs);
-
-    const styles = buildStylesForActiveRun(
-      ranges,
-      utf16LEByteLen(combinedText),
-      slice.activeRunIndex,
-      fontId,
-      fontName,
-      fontPath,
-      fontSizePx,
-      baseRgb,
-      highlightRgb,
-      strokes
-    );
-
-    const materialId = randomUUID();
-    json.materials.texts.push({
-      id: materialId,
-      type: "text",
-      sub_type: 0,
-      add_type: 0,
-      name: combinedText,
-      content: JSON.stringify({
-        styles,
-        text: combinedText,
-      }),
-      ...buildTextMaterialFields(
-        fontId,
-        fontName,
-        fontPath,
-        fontSizePx,
-        colorHex,
-        style.strokeColor,
-        strokeWidthVal,
-        style.backgroundBanner
-      ),
-    });
-
-    json.keyframes = json.keyframes ?? {};
-    json.keyframes.texts = json.keyframes.texts ?? [];
-
-    const baseKfId = randomUUID();
-    json.keyframes.texts.push({
-      id: baseKfId,
-      keyframe_list: [
-        {
-          id: randomUUID(),
-          property_type: "scale",
-          time_offset: 0,
-          values: [1.0, 1.0],
-        },
-      ],
-      property_type: "scale",
-    });
-
-    const segment: any = {
-      id: randomUUID(),
-      material_id: materialId,
-      target_timerange: { start: startUs, duration: durationUs },
-      source_timerange: { start: 0, duration: durationUs },
-      speed: 1.0,
-      volume: 1.0,
-      visible: true,
-      clip: {
-        alpha: 1.0,
-        flip: { horizontal: false, vertical: false },
-        rotation: 0.0,
-        scale: { x: 1.0, y: 1.0 },
-        transform: resolveTransform(style.position),
-      },
-      enable_adjust: true,
-      enable_color_curves: true,
-      enable_color_wheels: true,
-      enable_lut: true,
-      enable_smart_color_adjust: false,
-      responsive_layout: {
-        enable: false,
-        horizontal_pos_type: 0,
-        target_follow_material_id: "",
-        vertical_pos_type: 0,
-      },
-      keyframe_refs: [baseKfId],
-      extra_material_refs: [] as string[],
-      render_index: 0,
-    };
-
-    if (linkSubtitleToClip) {
-      const overlappingClip = findOverlappingVideoSegment(
-        videoTracks,
-        startUs,
-        startUs + durationUs
-      );
-      if (overlappingClip) segment.extra_material_refs.push(overlappingClip.id);
-    }
-
-    textTrack.segments.push(segment);
-    addedCount++;
-  }
-
-  return addedCount;
-}
 
 
 function findOverlappingVideoSegment(videoTracks: any[], startUs: number, endUs: number): any | null {
@@ -828,11 +561,18 @@ export function saveDraft(loaded: LoadedDraft, projectDir: string, saveMode: "co
         metaJson.tm_draft_cloud_modified = nowUs;
         metaJson.draft_timeline_materials_size_ = fs.statSync(outPath).size;
         fs.writeFileSync(metaPath, JSON.stringify(metaJson, null, 2), "utf8");
+
+        const now = new Date();
+        try { fs.utimesSync(outPath, now, now); } catch {}
+        try { fs.utimesSync(metaPath, now, now); } catch {}
       } catch (e) {
         console.warn("Could not update draft_meta_info.json:", e);
       }
     }
   }
+
+  const now = new Date();
+  try { fs.utimesSync(outPath, now, now); } catch {}
 
   return outPath;
 }

@@ -10,9 +10,7 @@ import { SubtitleStyleConfig, TranscribedSentence } from "./types";
 export interface SubtitleCue {
   startSec: number;
   endSec: number;
-  /** Rich-text runs; karaoke mode uses one run per word so each can be
-   *  individually colored/highlighted, others use a single run. */
-  runs: { text: string; highlightAt?: { startSec: number; endSec: number } }[];
+  runs: { text: string }[];
 }
 
 const FONT_SIZE_PX: Record<SubtitleStyleConfig["fontSize"], number> = {
@@ -100,15 +98,15 @@ export function sanitizeCues(cues: SubtitleCue[]): SubtitleCue[] {
  * Removes unnecessary spaces between Lao characters/words while keeping spaces
  * between English words or numbers (e.g. "ການ ອັດສຽງ ຄັ້ງ" -> "ການອັດສຽງຄັ້ງ").
  */
-export function cleanLaoText(text: string): string {
-  if (!text) return "";
-  let cleaned = text;
+export function cleanLaoText(text: any): string {
+  if (text === null || text === undefined) return "";
+  let cleaned = typeof text === "string" ? text : String(text);
   let prev = "";
-  while (cleaned !== prev) {
+  while (typeof cleaned === "string" && cleaned !== prev) {
     prev = cleaned;
     cleaned = cleaned.replace(/([\u0E80-\u0EFF])\s+([\u0E80-\u0EFF])/g, "$1$2");
   }
-  return cleaned.trim();
+  return typeof cleaned === "string" ? cleaned.trim() : String(cleaned).trim();
 }
 
 /**
@@ -116,8 +114,11 @@ export function cleanLaoText(text: string): string {
  * Lao words placed consecutively will be joined without spaces.
  * English words or numbers will have spaces preserved/added as appropriate.
  */
-export function joinLaoWords(words: string[]): string {
-  const cleaned = words.map((w) => w.trim()).filter((w) => w.length > 0);
+export function joinLaoWords(words: any[]): string {
+  if (!Array.isArray(words)) return "";
+  const cleaned = words
+    .map((w) => (w === null || w === undefined ? "" : String(w).trim()))
+    .filter((w) => w.length > 0);
   if (cleaned.length === 0) return "";
 
   const isLao = (str: string) => /[\u0E80-\u0EFF]/.test(str);
@@ -278,6 +279,8 @@ function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
 
   return sanitizeCues(cues);
 }
+
+
 
 
 

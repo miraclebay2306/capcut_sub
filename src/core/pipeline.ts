@@ -1,10 +1,79 @@
 import * as fs from "fs";
 import * as path from "path";
-import { extractAudioForTranscription, tempWavPathFor } from "./ffmpegSilence";
+import {
+  extractAudioForTranscription,
+  extractTimelineAudio,
+  tempWavPathFor,
+  TimelineAudioSegment,
+} from "./ffmpegSilence";
 import { transcribeLao } from "./transcribe";
 import { buildCues } from "./subtitleBuilder";
 import { loadDraft, insertLaoSubtitles, saveDraft } from "./draftContentEditor";
 import { PipelineConfig, PipelineProgress, PipelineResult } from "./types";
+
+function parseTimelineSegments(projectDir: string): {
+  segments: TimelineAudioSegment[];
+  totalDurationSec: number;
+} {
+  const draftPath = path.join(projectDir, "draft_content.json");
+  if (!fs.existsSync(draftPath)) {
+    throw new Error("draft_content.json not found in project directory.");
+  }
+
+  const raw = fs.readFileSync(draftPath, "utf8");
+  const draft = JSON.parse(raw);
+
+  const totalDurationSec = (draft.duration ?? 0) / 1_000_000;
+  const segments: TimelineAudioSegment[] = [];
+
+  const videoTracks = (draft.tracks ?? []).filter((t: any) => t.type === "video");
+
+  const videosMap = new Map<string, string>();
+  for (const v of draft.materials?.videos ?? []) {
+    const p = v.path || v.file_path || v.original_path;
+    if (p) videosMap.set(v.id, p);
+  }
+  for (const a of draft.materials?.audios ?? []) {
+    const p = a.path || a.file_path || a.original_path;
+    if (p) videosMap.set(a.id, p);
+  }
+
+  for (const track of videoTracks) {
+    for (const seg of track.segments ?? []) {
+      if (seg.visible === false) continue;
+
+      const rawPath = videosMap.get(seg.material_id);
+      if (!rawPath) continue;
+
+      const mediaPath = path.isAbsolute(rawPath)
+        ? rawPath
+        : path.resolve(projectDir, rawPath);
+      if (!fs.existsSync(mediaPath)) continue;
+
+      const sourceStartSec = (seg.source_timerange?.start ?? 0) / 1_000_000;
+      const sourceDurSec =
+        (seg.source_timerange?.duration ?? seg.target_timerange?.duration ?? 0) /
+        1_000_000;
+      const targetStartSec = (seg.target_timerange?.start ?? 0) / 1_000_000;
+      const targetDurSec = (seg.target_timerange?.duration ?? 0) / 1_000_000;
+      const speed = seg.speed ?? 1.0;
+
+      if (targetDurSec > 0 && sourceDurSec > 0) {
+        segments.push({
+          mediaPath,
+          sourceStartSec,
+          sourceDurSec,
+          targetStartSec,
+          targetDurSec,
+          speed,
+        });
+      }
+    }
+  }
+
+  segments.sort((a, b) => a.targetStartSec - b.targetStartSec);
+  return { segments, totalDurationSec };
+}
 
 /**
  * Finds the primary source media file for the project. CapCut stores original
@@ -99,6 +168,10 @@ function findPrimarySourceMedia(projectDir: string): string {
 
 import { execSync } from "child_process";
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function closeCapCutPC(): void {
   const exes = [
     "CapCut.exe",
@@ -107,6 +180,8 @@ function closeCapCutPC(): void {
     "CapCut_Main.exe",
     "CapCutHelper.exe",
     "CapCutRender.exe",
+    "CapCutWorker.exe",
+    "CapCutService.exe",
     "JianyingPro.exe",
     "JianyingProMain.exe",
   ];
@@ -115,6 +190,12 @@ function closeCapCutPC(): void {
       execSync(`taskkill /F /IM "${exe}" /T`, { stdio: "ignore" });
     } catch {}
   }
+  try {
+    execSync(
+      `powershell -NoProfile -Command "Get-Process | Where-Object { $_.Name -like '*CapCut*' -or $_.Name -like '*Jianying*' } | Stop-Process -Force"`,
+      { stdio: "ignore" }
+    );
+  } catch {}
 }
 
 
@@ -125,15 +206,40 @@ export async function runPipeline(
   let tempWav: string | null = null;
   try {
     closeCapCutPC();
-    const sourceMedia = findPrimarySourceMedia(config.projectDir);
+    await delay(300);
 
     onProgress({
       stage: "extracting_audio",
-      message: "ກຳລັງແຍກສຽງເພື່ອຖອດຂໍ້ຄວາມ...",
+      message: "ກຳລັງແຍກສຽງ ແລະ ສັງເຄາະໄທມ໌ໄລນ໌...",
       percent: 10,
     });
-    tempWav = tempWavPathFor(sourceMedia);
-    await extractAudioForTranscription(sourceMedia, tempWav);
+
+    let timelineWavCreated = false;
+    tempWav = path.join(
+      require("os").tmpdir(),
+      `capcut-lao-timeline-${Date.now()}.wav`
+    );
+
+    try {
+      const { segments, totalDurationSec } = parseTimelineSegments(
+        config.projectDir
+      );
+      if (segments.length > 0) {
+        await extractTimelineAudio(segments, totalDurationSec, tempWav);
+        timelineWavCreated = true;
+      }
+    } catch (e) {
+      console.warn(
+        "Could not extract multi-segment timeline audio, falling back to primary media:",
+        e
+      );
+    }
+
+    if (!timelineWavCreated) {
+      const sourceMedia = findPrimarySourceMedia(config.projectDir);
+      tempWav = tempWavPathFor(sourceMedia);
+      await extractAudioForTranscription(sourceMedia, tempWav);
+    }
 
     onProgress({
       stage: "transcribing",
@@ -159,6 +265,7 @@ export async function runPipeline(
       percent: 65,
     });
     closeCapCutPC();
+    await delay(300);
     const draft = loadDraft(config.projectDir);
     const cues = buildCues(sentences, config.subtitleStyle);
     if (!cues || cues.length === 0) {
@@ -172,6 +279,7 @@ export async function runPipeline(
       percent: 95,
     });
     closeCapCutPC();
+    await delay(300);
     const outputPath = saveDraft(
       draft,
       config.projectDir,

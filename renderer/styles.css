@@ -1,9 +1,7 @@
-/* ---------------------------------------------------------------
-   Design tokens are declared in the Tailwind config inline in
-   index.html. This file covers component-level classes that are
-   awkward to express as pure utility strings, plus the waveform
-   signature motif referenced throughout the layout.
-------------------------------------------------------------------*/
+/* Global Font Enforcement: Noto Sans Lao only */
+* {
+  font-family: "Noto Sans Lao", sans-serif !important;
+}
 
 ::selection {
   background: rgba(242, 198, 65, 0.25);

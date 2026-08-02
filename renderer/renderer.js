@@ -20,6 +20,10 @@
 
 let selectedAnimationMode = "word_by_word";
 
+function getSelectedFontFamily() {
+  return "Noto Sans Lao Regular";
+}
+
 function updateSubtitlePreview() {
   const previewEl = document.getElementById("subtitlePreviewText");
   if (!previewEl) return;
@@ -41,8 +45,7 @@ function updateSubtitlePreview() {
   const strokeColor = document.getElementById("strokeColor").value;
   const strokeWidth = document.getElementById("strokeWidth").value;
   const banner = document.getElementById("backgroundBanner").checked;
-  const fontFamily =
-    document.getElementById("fontFamily").value || "Noto Sans Lao Regular";
+  const fontFamily = getSelectedFontFamily();
 
   previewEl.style.fontSize = fontSizes[size] || "16px";
   previewEl.style.color = textColors[colorKey] || "#FFFFFF";
@@ -55,7 +58,7 @@ function updateSubtitlePreview() {
   if (selectedAnimationMode === "word_by_word") {
     previewEl.innerHTML = `<span>ສະບາຍດີ!</span>`;
   } else {
-    previewEl.innerHTML = `<span>ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າสู่ CapCut Lao Subtitler</span>`;
+    previewEl.innerHTML = `<span>ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler</span>`;
   }
 }
 
@@ -71,7 +74,8 @@ function saveUserSettings() {
       strokeColor: document.getElementById("strokeColor")?.value || "#000000",
       strokeWidth: document.getElementById("strokeWidth")?.value || "3",
       backgroundBanner: document.getElementById("backgroundBanner")?.checked || false,
-      fontFamily: document.getElementById("fontFamily")?.value || "Noto Sans Lao Regular",
+      fontFamilySelect: "Noto Sans Lao Regular",
+      fontFamily: "Noto Sans Lao Regular",
       selectedAnimationMode: selectedAnimationMode || "word_by_word",
       transcriptionEngine: document.getElementById("transcriptionEngine")?.value || "gemini",
       transcriptionModel: document.getElementById("transcriptionModel")?.value || "gemini-3.5-flash",
@@ -108,12 +112,12 @@ function loadUserSettings() {
     if (typeof settings.backgroundBanner === "boolean" && document.getElementById("backgroundBanner")) {
       document.getElementById("backgroundBanner").checked = settings.backgroundBanner;
     }
-    if (settings.fontFamily && document.getElementById("fontFamily")) {
-      document.getElementById("fontFamily").value = settings.fontFamily;
+    if (document.getElementById("fontFamilySelect")) {
+      document.getElementById("fontFamilySelect").value = "Noto Sans Lao Regular";
     }
 
     if (settings.selectedAnimationMode) {
-      selectedAnimationMode = settings.selectedAnimationMode;
+      selectedAnimationMode = settings.selectedAnimationMode === "karaoke" ? "sentence" : settings.selectedAnimationMode;
       document.querySelectorAll(".mode-card").forEach((card) => {
         if (card.dataset.mode === selectedAnimationMode) {
           card.classList.add("is-selected");
@@ -155,7 +159,7 @@ document.querySelectorAll(".mode-card").forEach((card) => {
   "strokeColor",
   "strokeWidth",
   "backgroundBanner",
-  "fontFamily",
+  "fontFamilySelect",
   "glossary",
   "transcriptionEngine",
   "transcriptionModel",
@@ -199,10 +203,10 @@ const transcriptionModelSelect = document.getElementById("transcriptionModel");
 
 const modelOptionsByEngine = {
   gemini: [
-    { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite (โควต้าเยอะ 500 RPD - แนะนำ)" },
-    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (รวดเร็ว & แม่นยำสูง)" },
-    { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite (โควต้าว่าง)" },
-    { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash (โควต้าเต็ม 20 RPD)" },
+    { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite (ໂຄຕ້າຫຼາຍ 500 RPD - ແນະນຳ)" },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (ໄວ & ຄວາມແນ່ນອນສູງ)" },
+    { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite (ໂຄຕ້າຫວ່າງ)" },
+    { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash (ໂຄຕ້າເຕັມ 20 RPD)" },
   ],
 };
 
@@ -281,7 +285,7 @@ function collectConfig() {
       strokeColor: document.getElementById("strokeColor").value,
       strokeWidth: parseInt(document.getElementById("strokeWidth").value, 10),
       backgroundBanner: document.getElementById("backgroundBanner").checked,
-      fontFamily: document.getElementById("fontFamily").value,
+      fontFamily: getSelectedFontFamily(),
       animationMode: selectedAnimationMode,
     },
     transcription: {
@@ -346,4 +350,3 @@ runBtn.addEventListener("click", async () => {
     openCapCutBtn?.classList.add("hidden");
   }
 });
-
