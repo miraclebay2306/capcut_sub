@@ -56,10 +56,10 @@ function updateSubtitlePreview() {
   previewEl.style.boxShadow = banner ? "0 2px 8px rgba(0,0,0,0.5)" : "none";
 
   if (selectedAnimationMode === "word_by_word") {
-    previewEl.innerHTML = `<span>ສະບາຍດີ!</span>`;
+    previewEl.innerHTML = `<span>ມື້ນີ້ເຮົາຈະເຮັດ 3 ຢ່າງ</span>`;
   } else if (selectedAnimationMode === "karaoke") {
     const highlight = colorKey === "white" ? "#F2C641" : textColors[colorKey] || "#F2C641";
-    previewEl.innerHTML = `<span style="color:${highlight}">ສະບາຍດີ!</span><span style="color:rgba(255,255,255,0.62)"> ຍິນດີຕ້ອນຮັບ</span>`;
+    previewEl.innerHTML = `<span style="color:${highlight}">ສະບາຍດີ! ຍິນດີ</span><span style="color:rgba(255,255,255,0.58)"> ຕ້ອນຮັບ</span>`;
   } else {
     previewEl.innerHTML = `<span>ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler</span>`;
   }
@@ -199,6 +199,10 @@ toggleKeyVisibility.addEventListener("click", () => {
 const rememberKeyCheckbox = document.getElementById("rememberKey");
 const projectDirInput = document.getElementById("projectDir");
 const browseDirBtn = document.getElementById("browseDir");
+const checkProjectBtn = document.getElementById("checkProjectBtn");
+const projectCheckResult = document.getElementById("projectCheckResult");
+const runSummaryPanel = document.getElementById("runSummaryPanel");
+const runSummaryBody = document.getElementById("runSummaryBody");
 const transcriptionEngineSelect = document.getElementById(
   "transcriptionEngine",
 );
@@ -259,7 +263,73 @@ browseDirBtn.addEventListener("click", async () => {
   if (dir) {
     projectDirInput.value = dir;
     saveUserSettings();
+    await validateSelectedProject({ quiet: true });
   }
+});
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function setStatusCard(el, state, html) {
+  if (!el) return;
+  el.classList.remove("hidden", "is-ok", "is-warning", "is-error");
+  el.classList.add(`is-${state}`);
+  el.innerHTML = html;
+}
+
+function renderProjectValidation(result) {
+  if (!result) return;
+  const state = result.ok ? (result.warnings.length > 0 ? "warning" : "ok") : "error";
+  const title = result.ok
+    ? "ໂຄງການພ້ອມໃຊ້ງານ"
+    : "ກວດໂຄງການບໍ່ຜ່ານ";
+  const warningHtml = result.warnings.length
+    ? `<div class="summary-note">${result.warnings.map(escapeHtml).join("<br>")}</div>`
+    : "";
+  const missingHtml = result.missingMediaFiles.length
+    ? `<div class="summary-note">Missing media:<br>${result.missingMediaFiles.slice(0, 3).map(escapeHtml).join("<br>")}${result.missingMediaFiles.length > 3 ? "<br>..." : ""}</div>`
+    : "";
+  const errorHtml = result.error
+    ? `<div class="summary-note">${escapeHtml(result.error)}</div>`
+    : "";
+
+  setStatusCard(
+    projectCheckResult,
+    state,
+    `<strong>${title}</strong>
+    <div class="summary-note">
+      duration: ${escapeHtml(result.durationSec)}s · video segments: ${escapeHtml(result.videoSegments)} · audio segments: ${escapeHtml(result.audioSegments)} · text segments: ${escapeHtml(result.textSegments)}
+    </div>
+    ${errorHtml}${warningHtml}${missingHtml}`,
+  );
+}
+
+async function validateSelectedProject(options = {}) {
+  const projectDir = projectDirInput.value;
+  if (!projectDir) {
+    if (!options.quiet) {
+      setStatusCard(projectCheckResult, "error", "<strong>ກະລຸນາເລືອກໂຟນເດີໂຄງການກ່ອນ</strong>");
+    }
+    return null;
+  }
+
+  if (!options.quiet) {
+    setStatusCard(projectCheckResult, "warning", "<strong>ກຳລັງກວດໂຄງການ...</strong>");
+  }
+
+  const result = await window.capcutLao.validateProject(projectDir);
+  renderProjectValidation(result);
+  return result;
+}
+
+checkProjectBtn?.addEventListener("click", async () => {
+  await validateSelectedProject();
 });
 
 // ---------------------------------------------------------------------------
@@ -313,6 +383,35 @@ function validateConfig(cfg) {
   return null;
 }
 
+function renderRunSummary(result) {
+  if (!runSummaryPanel || !runSummaryBody || !result?.verification) return;
+  const verification = result.verification;
+  runSummaryPanel.classList.remove("hidden");
+  runSummaryBody.innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-item">
+        <span class="summary-label">Text tracks</span>
+        <span class="summary-value">${escapeHtml(verification.textTracks)}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Subtitle segments</span>
+        <span class="summary-value">${escapeHtml(verification.textSegments)}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Text materials</span>
+        <span class="summary-value">${escapeHtml(verification.textMaterials)}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Linked segments</span>
+        <span class="summary-value">${escapeHtml(verification.linkedTextSegments)}</span>
+      </div>
+    </div>
+    <div class="summary-note">
+      Generated: ${escapeHtml(result.subtitlesGenerated)} · Saved: ${escapeHtml(result.outputPath)}
+    </div>
+  `;
+}
+
 window.capcutLao.onProgress((p) => {
   progressWrap.classList.remove("hidden");
   progressBar.style.width = `${p.percent}%`;
@@ -327,10 +426,20 @@ window.capcutLao.onProgress((p) => {
 
 runBtn.addEventListener("click", async () => {
   saveUserSettings();
+  runSummaryPanel?.classList.add("hidden");
   const config = collectConfig();
   const error = validateConfig(config);
   if (error) {
     statusMessage.textContent = error;
+    statusMessage.classList.add("text-danger");
+    return;
+  }
+
+  const projectCheck = await validateSelectedProject({ quiet: true });
+  if (!projectCheck?.ok) {
+    statusMessage.textContent = projectCheck?.error
+      ? `ກວດໂຄງການບໍ່ຜ່ານ: ${projectCheck.error}`
+      : "ກວດໂຄງການບໍ່ຜ່ານ: ກະລຸນາເລືອກໂຟນເດີ CapCut project ທີ່ຖືກຕ້ອງ";
     statusMessage.classList.add("text-danger");
     return;
   }
@@ -346,6 +455,7 @@ runBtn.addEventListener("click", async () => {
   runBtn.disabled = false;
   if (result.ok) {
     statusMessage.textContent = `ສຳເລັດແລ້ວ — ສ້າງຊັບໄຕເຕີ້ນ ${result.subtitlesGenerated} ຂໍ້ຄວາມ → ${result.outputPath}`;
+    renderRunSummary(result);
     openCapCutBtn?.classList.remove("hidden");
   } else {
     statusMessage.textContent = `ລົ້ມເຫຼວ: ${result.error}`;

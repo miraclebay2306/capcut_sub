@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { PipelineConfig, PipelineProgress, PipelineResult } from "../src/core/types";
+import {
+  PipelineConfig,
+  PipelineProgress,
+  PipelineResult,
+  ProjectValidationResult,
+} from "../src/core/types";
 
 contextBridge.exposeInMainWorld("capcutLao", {
   selectProjectDirectory: (): Promise<string | null> =>
@@ -11,6 +16,9 @@ contextBridge.exposeInMainWorld("capcutLao", {
 
   runPipeline: (config: PipelineConfig): Promise<PipelineResult> =>
     ipcRenderer.invoke("run-pipeline", config),
+
+  validateProject: (projectDir: string): Promise<ProjectValidationResult> =>
+    ipcRenderer.invoke("validate-project", projectDir),
 
   openCapCut: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("open-capcut"),

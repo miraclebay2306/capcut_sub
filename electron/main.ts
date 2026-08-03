@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, safeStorage } from "electron";
 import * as path from "path";
 import * as fs from "fs";
-import { runPipeline } from "../src/core/pipeline";
+import { runPipeline, validateProjectDirectory } from "../src/core/pipeline";
 import { PipelineConfig, PipelineProgress } from "../src/core/types";
 
 let mainWindow: BrowserWindow | null = null;
@@ -95,6 +95,10 @@ ipcMain.handle("run-pipeline", async (event, config: PipelineConfig) => {
   return runPipeline(config, onProgress);
 });
 
+ipcMain.handle("validate-project", async (_event, projectDir: string) => {
+  return validateProjectDirectory(projectDir);
+});
+
 // ---------------------------------------------------------------------------
 // IPC: open CapCut application
 // ---------------------------------------------------------------------------
@@ -129,4 +133,3 @@ ipcMain.handle("open-capcut", async () => {
     return { success: false, error: String(err) };
   }
 });
-

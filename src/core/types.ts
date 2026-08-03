@@ -73,5 +73,34 @@ export interface PipelineResult {
   ok: boolean;
   outputPath?: string;
   subtitlesGenerated?: number;
+  verification?: SavedDraftVerification;
+  error?: string;
+}
+
+export interface SavedDraftVerification {
+  textTracks: number;
+  textSegments: number;
+  textMaterials: number;
+  linkedTextSegments: number;
+}
+
+export interface ProjectValidationResult {
+  ok: boolean;
+  projectDir: string;
+  draftContentPath: string;
+  draftMetaPath: string;
+  hasDraftContent: boolean;
+  hasDraftMeta: boolean;
+  durationSec: number;
+  videoTracks: number;
+  audioTracks: number;
+  textTracks: number;
+  videoSegments: number;
+  audioSegments: number;
+  textSegments: number;
+  mediaMaterials: number;
+  existingTextMaterials: number;
+  missingMediaFiles: string[];
+  warnings: string[];
   error?: string;
 }

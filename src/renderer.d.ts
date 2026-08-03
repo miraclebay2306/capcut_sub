@@ -1,4 +1,9 @@
-import { PipelineConfig, PipelineProgress, PipelineResult } from "./core/types";
+import {
+  PipelineConfig,
+  PipelineProgress,
+  PipelineResult,
+  ProjectValidationResult,
+} from "./core/types";
 
 export interface CapcutLaoBridge {
   selectProjectDirectory(): Promise<string | null>;
@@ -6,6 +11,7 @@ export interface CapcutLaoBridge {
   loadApiKey(): Promise<string | null>;
   clearApiKey(): Promise<boolean>;
   runPipeline(config: PipelineConfig): Promise<PipelineResult>;
+  validateProject(projectDir: string): Promise<ProjectValidationResult>;
   onProgress(callback: (p: PipelineProgress) => void): () => void;
   openCapCut(): Promise<{ success: boolean; error?: string }>;
 }

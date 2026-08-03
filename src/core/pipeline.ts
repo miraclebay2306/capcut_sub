@@ -8,8 +8,18 @@ import {
 } from "./ffmpegSilence";
 import { transcribeLao } from "./transcribe";
 import { buildCues } from "./subtitleBuilder";
-import { loadDraft, insertLaoSubtitles, saveDraft } from "./draftContentEditor";
-import { PipelineConfig, PipelineProgress, PipelineResult } from "./types";
+import {
+  loadDraft,
+  insertLaoSubtitles,
+  saveDraft,
+  verifySavedDraft,
+} from "./draftContentEditor";
+import {
+  PipelineConfig,
+  PipelineProgress,
+  PipelineResult,
+  ProjectValidationResult,
+} from "./types";
 
 function parseTimelineSegments(projectDir: string): {
   segments: TimelineAudioSegment[];
@@ -198,6 +208,109 @@ function closeCapCutPC(): void {
   } catch {}
 }
 
+export function validateProjectDirectory(projectDir: string): ProjectValidationResult {
+  const draftContentPath = path.join(projectDir || "", "draft_content.json");
+  const draftMetaPath = path.join(projectDir || "", "draft_meta_info.json");
+  const base: ProjectValidationResult = {
+    ok: false,
+    projectDir,
+    draftContentPath,
+    draftMetaPath,
+    hasDraftContent: fs.existsSync(draftContentPath),
+    hasDraftMeta: fs.existsSync(draftMetaPath),
+    durationSec: 0,
+    videoTracks: 0,
+    audioTracks: 0,
+    textTracks: 0,
+    videoSegments: 0,
+    audioSegments: 0,
+    textSegments: 0,
+    mediaMaterials: 0,
+    existingTextMaterials: 0,
+    missingMediaFiles: [],
+    warnings: [],
+  };
+
+  if (!projectDir || !fs.existsSync(projectDir)) {
+    return { ...base, error: "Project folder does not exist." };
+  }
+
+  if (!base.hasDraftContent) {
+    return {
+      ...base,
+      error: "draft_content.json not found. Select the CapCut project folder itself.",
+    };
+  }
+
+  let draft: any;
+  try {
+    draft = JSON.parse(fs.readFileSync(draftContentPath, "utf8"));
+  } catch (e) {
+    return {
+      ...base,
+      error: `draft_content.json is not valid JSON: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    };
+  }
+
+  const tracks = Array.isArray(draft?.tracks) ? draft.tracks : [];
+  const videoTracks = tracks.filter((track: any) => track?.type === "video");
+  const audioTracks = tracks.filter((track: any) => track?.type === "audio");
+  const textTracks = tracks.filter((track: any) => track?.type === "text");
+  const videos = Array.isArray(draft?.materials?.videos) ? draft.materials.videos : [];
+  const audios = Array.isArray(draft?.materials?.audios) ? draft.materials.audios : [];
+  const texts = Array.isArray(draft?.materials?.texts) ? draft.materials.texts : [];
+
+  const result: ProjectValidationResult = {
+    ...base,
+    durationSec: Number(((draft?.duration ?? 0) / 1_000_000).toFixed(2)),
+    videoTracks: videoTracks.length,
+    audioTracks: audioTracks.length,
+    textTracks: textTracks.length,
+    videoSegments: videoTracks.reduce((sum: number, track: any) => sum + (track.segments?.length ?? 0), 0),
+    audioSegments: audioTracks.reduce((sum: number, track: any) => sum + (track.segments?.length ?? 0), 0),
+    textSegments: textTracks.reduce((sum: number, track: any) => sum + (track.segments?.length ?? 0), 0),
+    mediaMaterials: videos.length + audios.length,
+    existingTextMaterials: texts.length,
+    missingMediaFiles: [],
+    warnings: [],
+  };
+
+  for (const material of [...videos, ...audios]) {
+    const rawPath = material?.path || material?.file_path || material?.original_path;
+    if (!rawPath || typeof rawPath !== "string") continue;
+    const resolved = path.isAbsolute(rawPath) ? rawPath : path.resolve(projectDir, rawPath);
+    if (!fs.existsSync(resolved)) {
+      result.missingMediaFiles.push(resolved);
+    }
+  }
+
+  if (!result.hasDraftMeta) {
+    result.warnings.push("draft_meta_info.json not found. CapCut may not refresh new timeline materials reliably.");
+  }
+  if (result.videoTracks === 0 && result.audioTracks === 0) {
+    result.warnings.push("No video/audio tracks found in draft_content.json.");
+  }
+  if (result.videoSegments === 0 && result.audioSegments === 0) {
+    result.warnings.push("No timeline media segments found.");
+  }
+  if (result.mediaMaterials === 0) {
+    result.warnings.push("No video/audio materials found for transcription.");
+  }
+  if (result.missingMediaFiles.length > 0) {
+    result.warnings.push(`${result.missingMediaFiles.length} media file path(s) referenced by CapCut are missing.`);
+  }
+
+  result.ok =
+    result.hasDraftContent &&
+    result.videoSegments + result.audioSegments > 0 &&
+    result.mediaMaterials > 0 &&
+    result.missingMediaFiles.length === 0;
+
+  return result;
+}
+
 
 export async function runPipeline(
   config: PipelineConfig,
@@ -272,6 +385,9 @@ export async function runPipeline(
       throw new Error("ບໍ່ສາມາດສ້າງซັບໄຕເຕີ້ນໄດ້ (ไม่สามารถสร้างข้อความซับไตเติ้ลได้)");
     }
     const subtitlesGenerated = insertLaoSubtitles(draft.json, cues, config);
+    if (subtitlesGenerated <= 0) {
+      throw new Error("ບໍ່ມີ subtitle segment ຖືກຂຽນເຂົ້າ draft_content.json (ไม่มี segment ซับถูกเขียนลงโปรเจกต์)");
+    }
 
     onProgress({
       stage: "writing_draft",
@@ -285,9 +401,10 @@ export async function runPipeline(
       config.projectDir,
       config.timeline.saveMode,
     );
+    const verification = verifySavedDraft(outputPath, subtitlesGenerated);
 
     onProgress({ stage: "done", message: "ສຳເລັດແລ້ວ.", percent: 100 });
-    return { ok: true, outputPath, subtitlesGenerated };
+    return { ok: true, outputPath, subtitlesGenerated, verification };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     onProgress({ stage: "error", message, percent: 0 });

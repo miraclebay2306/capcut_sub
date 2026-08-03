@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
-import { PipelineConfig, SubtitlePosition } from "./types";
+import { PipelineConfig, SavedDraftVerification, SubtitlePosition } from "./types";
 import {
   SubtitleCue,
   resolveFontSizePx,
@@ -20,12 +20,6 @@ export interface LoadedDraft {
   path: string;
   json: any;
   backupPath: string;
-}
-
-export interface SavedDraftVerification {
-  textTracks: number;
-  textSegments: number;
-  textMaterials: number;
 }
 
 /** Loads draft_content.json and writes a timestamped .bak copy for safety. */
@@ -212,7 +206,7 @@ function buildStyledTextContent(
     text += renderedRunText;
     const end = utf16LEByteLen(text);
     const rgb = cue.runs[i].highlighted ? highlightRgb : baseRgb;
-    const alpha = hasHighlightRuns && !cue.runs[i].highlighted ? 0.62 : 1.0;
+    const alpha = hasHighlightRuns && !cue.runs[i].highlighted ? 0.58 : 1.0;
 
     styles.push(
       makeContentStyle(
@@ -264,14 +258,21 @@ function strokeWidthToCapCut(strokeWidth: number): number {
  * CapCut groups clips so they move together in the editor.
  */
 function resolveTransform(position: SubtitlePosition): { x: number; y: number } {
+  // CapCut normalized coords: y=0 is centre, negative=below, positive=above.
+  // TikTok / Shorts (9:16) have UI chrome (like, comment, share) in the
+  // bottom ~20 % of the screen (y ≈ −0.60 to −1.0).  The comfortable reading
+  // zone for short-form vertical video is roughly y −0.20 to −0.40.
   switch (position) {
     case "center_screen":
+      // True centre — good for bold / impact-style captions
       return { x: 0.0, y: 0.0 };
     case "lower_center":
-      return { x: 0.0, y: -0.35 };
+      // Lower-third sweet-spot: easy to read, clears TikTok UI
+      return { x: 0.0, y: -0.30 };
     case "bottom_center":
     default:
-      return { x: 0.0, y: -0.75 };
+      // Just above the TikTok danger-zone — as low as practical
+      return { x: 0.0, y: -0.50 };
   }
 }
 
@@ -443,6 +444,52 @@ function touchProjectFiles(projectDir: string, paths: string[]): void {
   try {
     fs.utimesSync(projectDir, now, now);
   } catch {}
+}
+
+function verifyDraftHasVisibleSubtitles(json: any, expectedMinSegments: number): SavedDraftVerification {
+  const textTracks = findTracksByType(json, "text");
+  const textMaterials = Array.isArray(json?.materials?.texts) ? json.materials.texts : [];
+  const textMaterialIds = new Set(textMaterials.map((text: any) => text?.id).filter(Boolean));
+
+  let textSegments = 0;
+  let linkedTextSegments = 0;
+  for (const track of textTracks) {
+    for (const segment of track.segments ?? []) {
+      if (segment?.visible === false) continue;
+      textSegments++;
+      if (segment?.material_id && textMaterialIds.has(segment.material_id)) {
+        linkedTextSegments++;
+      }
+    }
+  }
+
+  if (textSegments < expectedMinSegments) {
+    throw new Error(
+      `Saved draft verification failed: expected at least ${expectedMinSegments} subtitle segments, but found ${textSegments}.`
+    );
+  }
+
+  if (linkedTextSegments < expectedMinSegments) {
+    throw new Error(
+      `Saved draft verification failed: only ${linkedTextSegments}/${expectedMinSegments} subtitle segments point to existing text materials.`
+    );
+  }
+
+  return {
+    textTracks: textTracks.length,
+    textSegments,
+    textMaterials: textMaterials.length,
+    linkedTextSegments,
+  };
+}
+
+export function verifySavedDraft(
+  draftPath: string,
+  expectedMinSegments: number
+): SavedDraftVerification {
+  const raw = fs.readFileSync(draftPath, "utf8");
+  const json = JSON.parse(raw);
+  return verifyDraftHasVisibleSubtitles(json, expectedMinSegments);
 }
 
 export function insertLaoSubtitles(
@@ -677,7 +724,7 @@ export function saveDraft(loaded: LoadedDraft, projectDir: string, saveMode: "co
       ? loaded.path
       : path.join(projectDir, "draft_content_edited.json");
 
-  fs.writeFileSync(outPath, JSON.stringify(loaded.json, null, 2), "utf8");
+  writeTextFileDurably(outPath, JSON.stringify(loaded.json, null, 2));
 
   if (saveMode === "overwrite") {
     const metaPath = path.join(projectDir, "draft_meta_info.json");
@@ -724,19 +771,24 @@ export function saveDraft(loaded: LoadedDraft, projectDir: string, saveMode: "co
         metaJson.tm_draft_modified = nowUs;
         metaJson.tm_draft_cloud_modified = nowUs;
         metaJson.draft_timeline_materials_size_ = fs.statSync(outPath).size;
-        fs.writeFileSync(metaPath, JSON.stringify(metaJson, null, 2), "utf8");
+        writeTextFileDurably(metaPath, JSON.stringify(metaJson, null, 2));
 
         const now = new Date();
         try { fs.utimesSync(outPath, now, now); } catch {}
         try { fs.utimesSync(metaPath, now, now); } catch {}
       } catch (e) {
-        console.warn("Could not update draft_meta_info.json:", e);
+        throw new Error(
+          `Could not update draft_meta_info.json, so CapCut may not show the new subtitles: ${
+            e instanceof Error ? e.message : String(e)
+          }`
+        );
       }
     }
   }
 
   const now = new Date();
   try { fs.utimesSync(outPath, now, now); } catch {}
+  touchProjectFiles(projectDir, [outPath]);
 
   return outPath;
 }

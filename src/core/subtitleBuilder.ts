@@ -153,10 +153,116 @@ export function joinLaoWords(words: any[]): string {
 
 function splitTextIntoWords(text: any): string[] {
   if (text === null || text === undefined) return [];
-  return String(text)
+  const normalized = cleanLaoText(String(text));
+  const tokens = normalized
     .split(/\s+/)
-    .map((word) => cleanLaoText(word))
+    .flatMap((word) => tokenizeMixedText(word))
     .filter((word) => word.trim().length > 0);
+  return tokens.length > 0 ? tokens : [cleanLaoText(text)].filter(Boolean);
+}
+
+function tokenizeMixedText(text: any): string[] {
+  const cleaned = cleanLaoText(text);
+  if (!cleaned) return [];
+
+  const tokenPattern = /[\u0E80-\u0EFF]+|\d+(?:[.,:/-]\d+)*|[A-Za-z]+(?:['-][A-Za-z]+)*/g;
+  const matches = cleaned.match(tokenPattern);
+  return matches && matches.length > 0 ? matches : [cleaned];
+}
+
+function splitMixedTimedWords(
+  words: { word: string; startSec: number; endSec: number }[]
+): { word: string; startSec: number; endSec: number }[] {
+  const result: { word: string; startSec: number; endSec: number }[] = [];
+
+  for (const word of words) {
+    const parts = tokenizeMixedText(word.word);
+    if (parts.length <= 1) {
+      const cleaned = cleanLaoText(word.word);
+      if (cleaned) result.push({ ...word, word: cleaned });
+      continue;
+    }
+
+    const duration = Math.max(0.08, word.endSec - word.startSec);
+    const totalChars = Math.max(1, parts.reduce((sum, part) => sum + part.length, 0));
+    let cursorSec = word.startSec;
+
+    for (let i = 0; i < parts.length; i++) {
+      const partDuration =
+        i === parts.length - 1
+          ? word.endSec - cursorSec
+          : duration * (parts[i].length / totalChars);
+      const endSec = i === parts.length - 1 ? word.endSec : cursorSec + partDuration;
+      result.push({
+        word: parts[i],
+        startSec: cursorSec,
+        endSec: Math.max(endSec, cursorSec + 0.06),
+      });
+      cursorSec = endSec;
+    }
+  }
+
+  return mergeDetachedLaoMarks(result);
+}
+
+function isDetachedLaoPrefix(text: string): boolean {
+  return /^[\u0EC0-\u0EC4]+$/.test(text);
+}
+
+function isDetachedLaoSuffixOrMark(text: string): boolean {
+  return /^[\u0EB0-\u0EBD\u0EC8-\u0ECD]+$/.test(text);
+}
+
+function mergeDetachedLaoMarks(
+  words: { word: string; startSec: number; endSec: number }[]
+): { word: string; startSec: number; endSec: number }[] {
+  const merged: { word: string; startSec: number; endSec: number }[] = [];
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const cleaned = cleanLaoText(word.word);
+    if (!cleaned) continue;
+
+    if (isDetachedLaoPrefix(cleaned)) {
+      const next = words[i + 1];
+      if (next && /[\u0E80-\u0EFF]/.test(next.word)) {
+        next.word = cleanLaoText(cleaned + next.word);
+        next.startSec = Math.min(word.startSec, next.startSec);
+        continue;
+      }
+    }
+
+    if (isDetachedLaoSuffixOrMark(cleaned) && merged.length > 0) {
+      const previous = merged[merged.length - 1];
+      if (/[\u0E80-\u0EFF]/.test(previous.word)) {
+        previous.word = cleanLaoText(previous.word + cleaned);
+        previous.endSec = Math.max(previous.endSec, word.endSec);
+        continue;
+      }
+    }
+
+    merged.push({ ...word, word: cleaned });
+  }
+
+  return merged;
+}
+
+function chunkTimedWords(
+  words: { word: string; startSec: number; endSec: number }[],
+  maxWords = 3
+): { word: string; startSec: number; endSec: number }[][] {
+  const chunks: { word: string; startSec: number; endSec: number }[][] = [];
+  for (let i = 0; i < words.length; i += maxWords) {
+    chunks.push(words.slice(i, i + maxWords));
+  }
+
+  const last = chunks[chunks.length - 1];
+  const previous = chunks[chunks.length - 2];
+  if (last && previous && last.length === 1 && previous.length > 2) {
+    last.unshift(previous.pop()!);
+  }
+
+  return chunks.filter((chunk) => chunk.length > 0);
 }
 
 function splitOverlongTimedWords(
@@ -270,9 +376,19 @@ function buildSentenceCues(sentences: TranscribedSentence[]): SubtitleCue[] {
   return sanitizeCues(cues);
 }
 
-/** One cue per word, each shown continuously while spoken with smooth transitions. */
+/**
+ * Word-by-word captions: each cue shows only 1-2 short words so the text
+ * appears truly incrementally — visually distinct from sentence mode.
+ *
+ * Uses both a word-count limit (maxWords = 2) AND a character-length limit
+ * (maxChars = 10) so that even after Lao words are joined without spaces the
+ * resulting cue stays short.
+ */
 function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
-  const allWords: { word: string; startSec: number; endSec: number }[] = [];
+  const WBW_MAX_WORDS = 2;
+  const WBW_MAX_CHARS = 10;
+
+  let allWords: { word: string; startSec: number; endSec: number }[] = [];
 
   for (const s of sentences) {
     if (!s.words || s.words.length === 0) {
@@ -298,41 +414,58 @@ function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
     }
   }
 
+  allWords = splitMixedTimedWords(allWords);
+  // Split any single token that already exceeds the char limit
+  allWords = splitOverlongTimedWords(allWords, WBW_MAX_CHARS);
   if (allWords.length === 0) return [];
 
+  // --- Character-aware chunking (like karaoke but without highlight runs) ---
+  const chunks: { word: string; startSec: number; endSec: number }[][] = [];
+  let currentChunk: { word: string; startSec: number; endSec: number }[] = [];
+
+  for (const word of allWords) {
+    const candidateText = joinLaoWords([...currentChunk.map((w) => w.word), word.word]);
+    if (
+      currentChunk.length > 0 &&
+      (currentChunk.length >= WBW_MAX_WORDS || candidateText.length > WBW_MAX_CHARS)
+    ) {
+      chunks.push(currentChunk);
+      currentChunk = [word];
+    } else {
+      currentChunk.push(word);
+    }
+  }
+  if (currentChunk.length > 0) chunks.push(currentChunk);
+
+  // Avoid a single-word orphan at the end by merging it into the previous chunk
+  if (chunks.length >= 2) {
+    const last = chunks[chunks.length - 1];
+    const prev = chunks[chunks.length - 2];
+    if (last.length === 1 && prev.length > 1) {
+      last.unshift(prev.pop()!);
+    }
+  }
+
+  // --- Build cues ---
   const cues: SubtitleCue[] = [];
-  for (let i = 0; i < allWords.length; i++) {
-    const curr = allWords[i];
-    let startSec = curr.startSec;
-    let endSec = curr.endSec;
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const nextChunk = i < chunks.length - 1 ? chunks[i + 1] : null;
+    const startSec = chunk[0].startSec;
+    let endSec = chunk[chunk.length - 1].endSec;
 
-    const next = i < allWords.length - 1 ? allWords[i + 1] : null;
-
-    if (next && next.startSec > startSec) {
-      const gap = next.startSec - endSec;
-      if (gap > 0 && gap < 0.6) {
-        endSec = next.startSec;
-      } else if (gap <= 0) {
-        endSec = next.startSec;
+    // Extend to fill small gaps so there's no flicker between cues
+    if (nextChunk && nextChunk[0].startSec > startSec) {
+      const gap = nextChunk[0].startSec - endSec;
+      if (gap >= 0 && gap < 0.6) {
+        endSec = nextChunk[0].startSec;
       }
-    }
-
-    if (endSec - startSec < 0.2) {
-      endSec = startSec + 0.2;
-    }
-
-    if (next && next.startSec > startSec && endSec > next.startSec) {
-      endSec = next.startSec;
-    }
-
-    if (endSec <= startSec) {
-      endSec = startSec + 0.1;
     }
 
     cues.push({
       startSec,
-      endSec,
-      runs: [{ text: curr.word }],
+      endSec: Math.max(endSec, startSec + 0.25),
+      runs: [{ text: joinLaoWords(chunk.map((w) => w.word)) }],
     });
   }
 
@@ -370,6 +503,7 @@ function buildKaraokeCues(
     }
 
     if (words.length === 0) continue;
+    words = splitMixedTimedWords(words);
     words = splitOverlongTimedWords(words, limits.maxChars);
 
     const chunks: { word: string; startSec: number; endSec: number }[][] = [];

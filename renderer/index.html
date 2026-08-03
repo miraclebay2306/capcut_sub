@@ -72,7 +72,9 @@
           <div class="flex gap-2">
             <input id="projectDir" type="text" readonly placeholder="ກົດ ເລືອກ... ເພື່ອເລືອກໂຟນເດີໂຄງການ…" class="input flex-1 font-mono text-sm text-muted" />
             <button id="browseDir" type="button" class="btn-secondary text-sm whitespace-nowrap">ເລືອກ…</button>
+            <button id="checkProjectBtn" type="button" class="btn-secondary text-sm whitespace-nowrap">ກວດໂຄງການ</button>
           </div>
+          <div id="projectCheckResult" class="status-card hidden mt-3"></div>
         </div>
       </div>
     </section>
@@ -219,6 +221,14 @@
           <textarea id="glossary" rows="3" placeholder="Next.js, Tailwind, CapCut, ຊື່ແບຣນ..." class="input text-sm font-mono resize-none"></textarea>
         </div>
       </div>
+    </section>
+
+    <section id="runSummaryPanel" class="panel hidden">
+      <div class="panel-head">
+        <h2>ຜົນການຂຽນເຂົ້າໂຄງການ</h2>
+        <p>ສະຫຼຸບຈຳນວນ track, segment, ແລະ material ທີ່ກວດພົບຫຼັງບັນທຶກ.</p>
+      </div>
+      <div id="runSummaryBody" class="panel-body"></div>
     </section>
 
   </main>
