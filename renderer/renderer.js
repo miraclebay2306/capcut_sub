@@ -57,6 +57,9 @@ function updateSubtitlePreview() {
 
   if (selectedAnimationMode === "word_by_word") {
     previewEl.innerHTML = `<span>ສະບາຍດີ!</span>`;
+  } else if (selectedAnimationMode === "karaoke") {
+    const highlight = colorKey === "white" ? "#F2C641" : textColors[colorKey] || "#F2C641";
+    previewEl.innerHTML = `<span style="color:${highlight}">ສະບາຍດີ!</span><span style="color:rgba(255,255,255,0.62)"> ຍິນດີຕ້ອນຮັບ</span>`;
   } else {
     previewEl.innerHTML = `<span>ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler</span>`;
   }
@@ -117,7 +120,7 @@ function loadUserSettings() {
     }
 
     if (settings.selectedAnimationMode) {
-      selectedAnimationMode = settings.selectedAnimationMode === "karaoke" ? "sentence" : settings.selectedAnimationMode;
+      selectedAnimationMode = settings.selectedAnimationMode;
       document.querySelectorAll(".mode-card").forEach((card) => {
         if (card.dataset.mode === selectedAnimationMode) {
           card.classList.add("is-selected");

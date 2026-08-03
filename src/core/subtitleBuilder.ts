@@ -10,7 +10,7 @@ import { SubtitleStyleConfig, TranscribedSentence } from "./types";
 export interface SubtitleCue {
   startSec: number;
   endSec: number;
-  runs: { text: string }[];
+  runs: { text: string; highlighted?: boolean }[];
 }
 
 const FONT_SIZE_PX: Record<SubtitleStyleConfig["fontSize"], number> = {
@@ -24,6 +24,16 @@ const TEXT_COLOR_HEX: Record<SubtitleStyleConfig["textColor"], string> = {
   white: "#FFFFFFFF",
   yellow: "#FFD400FF",
   neon_green: "#39FF14FF",
+};
+
+const KARAOKE_CHUNK_LIMITS: Record<
+  SubtitleStyleConfig["fontSize"],
+  { maxWords: number; maxChars: number }
+> = {
+  small: { maxWords: 5, maxChars: 24 },
+  medium: { maxWords: 4, maxChars: 20 },
+  large: { maxWords: 3, maxChars: 16 },
+  xl: { maxWords: 2, maxChars: 13 },
 };
 
 export function resolveFontSizePx(style: SubtitleStyleConfig): number {
@@ -43,6 +53,9 @@ export function buildCues(
 ): SubtitleCue[] {
   let rawCues: SubtitleCue[];
   switch (style.animationMode) {
+    case "karaoke":
+      rawCues = buildKaraokeCues(sentences, style);
+      break;
     case "word_by_word":
       rawCues = buildWordByWordCues(sentences);
       break;
@@ -138,14 +151,60 @@ export function joinLaoWords(words: any[]): string {
   return cleanLaoText(result);
 }
 
+function splitTextIntoWords(text: any): string[] {
+  if (text === null || text === undefined) return [];
+  return String(text)
+    .split(/\s+/)
+    .map((word) => cleanLaoText(word))
+    .filter((word) => word.trim().length > 0);
+}
+
+function splitOverlongTimedWords(
+  words: { word: string; startSec: number; endSec: number }[],
+  maxChars: number
+): { word: string; startSec: number; endSec: number }[] {
+  const result: { word: string; startSec: number; endSec: number }[] = [];
+
+  for (const word of words) {
+    if (word.word.length <= maxChars || maxChars <= 1) {
+      result.push(word);
+      continue;
+    }
+
+    const parts: string[] = [];
+    for (let i = 0; i < word.word.length; i += maxChars) {
+      parts.push(word.word.slice(i, i + maxChars));
+    }
+
+    const duration = Math.max(0.08, word.endSec - word.startSec);
+    const totalChars = Math.max(1, word.word.length);
+    let cursorSec = word.startSec;
+
+    for (let i = 0; i < parts.length; i++) {
+      const partDuration =
+        i === parts.length - 1
+          ? word.endSec - cursorSec
+          : duration * (parts[i].length / totalChars);
+      const endSec = i === parts.length - 1 ? word.endSec : cursorSec + partDuration;
+      result.push({
+        word: parts[i],
+        startSec: cursorSec,
+        endSec: Math.max(endSec, cursorSec + 0.08),
+      });
+      cursorSec = endSec;
+    }
+  }
+
+  return result;
+}
+
 function splitSentenceIntoCompactChunks(
   text: string,
   startSec: number,
   endSec: number,
   maxChars = 50
 ): SubtitleCue[] {
-  const cleanedText = cleanLaoText(text);
-  const words = cleanedText.split(/\s+/).filter((w) => w.trim().length > 0);
+  const words = splitTextIntoWords(text);
   if (words.length === 0) return [];
 
   const chunks: string[] = [];
@@ -218,7 +277,7 @@ function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
   for (const s of sentences) {
     if (!s.words || s.words.length === 0) {
       if (s.text) {
-        const dummyWords = cleanLaoText(s.text).split(/\s+/).filter((w) => w.trim().length > 0);
+        const dummyWords = splitTextIntoWords(s.text);
         const dur = Math.max(0.4, s.endSec - s.startSec);
         const wDur = dur / Math.max(1, dummyWords.length);
         dummyWords.forEach((dw, idx) => {
@@ -275,6 +334,84 @@ function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
       endSec,
       runs: [{ text: curr.word }],
     });
+  }
+
+  return sanitizeCues(cues);
+}
+
+/** Full phrase stays visible while the spoken portion changes color progressively. */
+function buildKaraokeCues(
+  sentences: TranscribedSentence[],
+  style: SubtitleStyleConfig
+): SubtitleCue[] {
+  const cues: SubtitleCue[] = [];
+  const limits = KARAOKE_CHUNK_LIMITS[style.fontSize];
+
+  for (const sentence of sentences) {
+    let words: { word: string; startSec: number; endSec: number }[] = [];
+
+    if (sentence.words && sentence.words.length > 0) {
+      words = sentence.words
+        .map((w) => ({
+          word: cleanLaoText(w.word),
+          startSec: w.startSec,
+          endSec: w.endSec,
+        }))
+        .filter((w) => w.word.trim().length > 0);
+    } else if (sentence.text) {
+      const fallbackWords = splitTextIntoWords(sentence.text);
+      const duration = Math.max(0.4, sentence.endSec - sentence.startSec);
+      const wordDuration = duration / Math.max(1, fallbackWords.length);
+      words = fallbackWords.map((word, index) => ({
+        word,
+        startSec: sentence.startSec + index * wordDuration,
+        endSec: sentence.startSec + (index + 1) * wordDuration,
+      }));
+    }
+
+    if (words.length === 0) continue;
+    words = splitOverlongTimedWords(words, limits.maxChars);
+
+    const chunks: { word: string; startSec: number; endSec: number }[][] = [];
+    let currentChunk: { word: string; startSec: number; endSec: number }[] = [];
+
+    for (const word of words) {
+      const candidateText = joinLaoWords([...currentChunk.map((w) => w.word), word.word]);
+      if (
+        currentChunk.length > 0 &&
+        (currentChunk.length >= limits.maxWords || candidateText.length > limits.maxChars)
+      ) {
+        chunks.push(currentChunk);
+        currentChunk = [word];
+      } else {
+        currentChunk.push(word);
+      }
+    }
+    if (currentChunk.length > 0) chunks.push(currentChunk);
+
+    for (const chunk of chunks) {
+      for (let i = 0; i < chunk.length; i++) {
+        const current = chunk[i];
+        const next = i < chunk.length - 1 ? chunk[i + 1] : null;
+        let endSec = current.endSec;
+
+        if (next && next.startSec > current.startSec) {
+          endSec = next.startSec;
+        }
+        if (endSec - current.startSec < 0.08) {
+          endSec = current.startSec + 0.08;
+        }
+
+        cues.push({
+          startSec: current.startSec,
+          endSec,
+          runs: chunk.map((w, runIndex) => ({
+            text: w.word,
+            highlighted: runIndex <= i,
+          })),
+        });
+      }
+    }
   }
 
   return sanitizeCues(cues);

@@ -22,6 +22,12 @@ export interface LoadedDraft {
   backupPath: string;
 }
 
+export interface SavedDraftVerification {
+  textTracks: number;
+  textSegments: number;
+  textMaterials: number;
+}
+
 /** Loads draft_content.json and writes a timestamped .bak copy for safety. */
 export function loadDraft(projectDir: string): LoadedDraft {
   const draftPath = path.join(projectDir, "draft_content.json");
@@ -70,6 +76,32 @@ function findTracksByType(json: any, type: "video" | "audio" | "text"): any[] {
   return (json.tracks ?? []).filter((t: any) => t.type === type);
 }
 
+function collectMaterialIdsFromTracks(tracks: any[], type: "text"): Set<string> {
+  const ids = new Set<string>();
+  for (const track of tracks ?? []) {
+    if (track?.type !== type) continue;
+    for (const segment of track.segments ?? []) {
+      if (segment?.material_id) ids.add(segment.material_id);
+    }
+  }
+  return ids;
+}
+
+function removeTextKeyframesForSegments(json: any, textTracks: any[]): void {
+  const keyframeIds = new Set<string>();
+  for (const track of textTracks ?? []) {
+    for (const segment of track.segments ?? []) {
+      for (const keyframeId of segment.keyframe_refs ?? []) {
+        if (keyframeId) keyframeIds.add(keyframeId);
+      }
+    }
+  }
+
+  if (keyframeIds.size > 0 && Array.isArray(json.keyframes?.texts)) {
+    json.keyframes.texts = json.keyframes.texts.filter((kf: any) => !keyframeIds.has(kf.id));
+  }
+}
+
 function toRgbaHex(hex: string): string {
   if (!hex) return "#FFFFFFFF";
   let clean = hex.replace("#", "");
@@ -102,6 +134,121 @@ function buildFill(rgb: [number, number, number], alpha = 1.0): any {
       solid: { alpha, color: rgb },
     },
   };
+}
+
+function resolveKaraokeHighlightHex(colorHex: string): string {
+  return colorHex.toUpperCase() === "#FFFFFFFF" ? "#FFD400FF" : colorHex;
+}
+
+function makeContentStyle(
+  fontId: string,
+  fontName: string,
+  fontPath: string,
+  fontSizePx: number,
+  rgb: [number, number, number],
+  range: [number, number],
+  strokeRgb: [number, number, number],
+  strokeWidth: number,
+  strokeWidthVal: number,
+  alpha = 1.0
+): any {
+  return {
+    fill: buildFill(rgb, alpha),
+    font: {
+      id: fontId,
+      path: fontPath,
+      name: fontName,
+      title: fontName,
+    },
+    size: fontSizePx,
+    range,
+    strokes:
+      strokeWidth > 0
+        ? [
+            {
+              alpha: 1.0,
+              color: strokeRgb,
+              width: strokeWidthVal,
+            },
+          ]
+        : [],
+  };
+}
+
+function buildStyledTextContent(
+  cue: SubtitleCue,
+  style: PipelineConfig["subtitleStyle"],
+  fontId: string,
+  fontName: string,
+  fontPath: string,
+  fontSizePx: number,
+  colorHex: string,
+  strokeRgb: [number, number, number],
+  strokeWidthVal: number
+): { text: string; styles: any[] } {
+  const hasHighlightRuns = cue.runs.some((run) => run.highlighted !== undefined);
+  const highlightHex = hasHighlightRuns ? resolveKaraokeHighlightHex(colorHex) : colorHex;
+  const highlightRgb = hexToRgbFloat(highlightHex);
+  const baseRgb = hasHighlightRuns ? hexToRgbFloat("#FFFFFF") : hexToRgbFloat(colorHex);
+  const styles: any[] = [];
+  let text = "";
+
+  const isLao = (str: string) => /[\u0E80-\u0EFF]/.test(str);
+
+  for (let i = 0; i < cue.runs.length; i++) {
+    const rawRunText = cleanLaoText(cue.runs[i].text);
+    if (!rawRunText) continue;
+
+    let renderedRunText = rawRunText;
+    if (text.length > 0) {
+      const prevChar = text[text.length - 1];
+      const nextChar = rawRunText[0];
+      if (!(isLao(prevChar) && isLao(nextChar))) {
+        renderedRunText = " " + renderedRunText;
+      }
+    }
+
+    const start = utf16LEByteLen(text);
+    text += renderedRunText;
+    const end = utf16LEByteLen(text);
+    const rgb = cue.runs[i].highlighted ? highlightRgb : baseRgb;
+    const alpha = hasHighlightRuns && !cue.runs[i].highlighted ? 0.62 : 1.0;
+
+    styles.push(
+      makeContentStyle(
+        fontId,
+        fontName,
+        fontPath,
+        fontSizePx,
+        rgb,
+        [start, end],
+        strokeRgb,
+        style.strokeWidth,
+        strokeWidthVal,
+        alpha
+      )
+    );
+  }
+
+  if (styles.length === 0) {
+    const fallbackText = joinLaoWords(cue.runs.map((r) => r.text));
+    styles.push(
+      makeContentStyle(
+        fontId,
+        fontName,
+        fontPath,
+        fontSizePx,
+        hexToRgbFloat(colorHex),
+        [0, utf16LEByteLen(fallbackText)],
+        strokeRgb,
+        style.strokeWidth,
+        strokeWidthVal
+      )
+    );
+    return { text: fallbackText, styles };
+  }
+
+  return { text, styles };
 }
 
 function strokeWidthToCapCut(strokeWidth: number): number {
@@ -276,6 +423,28 @@ function buildTextMaterialFields(
   };
 }
 
+function writeTextFileDurably(filePath: string, content: string): void {
+  const fd = fs.openSync(filePath, "w");
+  try {
+    fs.writeFileSync(fd, content, "utf8");
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function touchProjectFiles(projectDir: string, paths: string[]): void {
+  const now = new Date();
+  for (const p of paths) {
+    try {
+      fs.utimesSync(p, now, now);
+    } catch {}
+  }
+  try {
+    fs.utimesSync(projectDir, now, now);
+  } catch {}
+}
+
 export function insertLaoSubtitles(
   json: any,
   cues: SubtitleCue[],
@@ -284,8 +453,15 @@ export function insertLaoSubtitles(
   const style = config.subtitleStyle;
   json.materials.texts = json.materials.texts ?? [];
 
-  // Remove existing text tracks to avoid accumulating duplicate track rows on re-runs
+  // Remove existing text tracks and their text materials so CapCut's project
+  // index does not keep pointing at stale subtitle material ids across re-runs.
+  const existingTextTracks = findTracksByType(json, "text");
+  const existingTextMaterialIds = collectMaterialIdsFromTracks(existingTextTracks, "text");
+  removeTextKeyframesForSegments(json, existingTextTracks);
   json.tracks = (json.tracks ?? []).filter((t: any) => t.type !== "text");
+  json.materials.texts = (json.materials.texts ?? []).filter(
+    (text: any) => !existingTextMaterialIds.has(text.id)
+  );
 
   const textTrack: any = {
     id: randomUUID(),
@@ -299,7 +475,6 @@ export function insertLaoSubtitles(
   const videoTracks = findTracksByType(json, "video");
   const fontSizePx = resolveFontSizePx(style);
   const colorHex = resolveTextColorHex(style);
-  const baseRgb = hexToRgbFloat(colorHex);
   const strokeWidthVal = strokeWidthToCapCut(style.strokeWidth);
   const strokeRgb = hexToRgbFloat(style.strokeColor || "#000000");
   const { fontName, fontPath } = resolveFontInfo(style.fontFamily);
@@ -314,7 +489,18 @@ export function insertLaoSubtitles(
     if (durationUs <= 0) continue;
 
     const materialId = randomUUID();
-    const combinedText = joinLaoWords(cue.runs.map((r) => r.text));
+    const content = buildStyledTextContent(
+      cue,
+      style,
+      fontId,
+      fontName,
+      fontPath,
+      fontSizePx,
+      colorHex,
+      strokeRgb,
+      strokeWidthVal
+    );
+    const combinedText = content.text;
 
     json.materials.texts.push({
       id: materialId,
@@ -323,29 +509,7 @@ export function insertLaoSubtitles(
       add_type: 0,
       name: combinedText,
       content: JSON.stringify({
-        styles: [
-          {
-            fill: buildFill(baseRgb),
-            font: {
-              id: fontId,
-              path: fontPath,
-              name: fontName,
-              title: fontName,
-            },
-            size: fontSizePx,
-            range: [0, utf16LEByteLen(combinedText)],
-            strokes:
-              style.strokeWidth > 0
-                ? [
-                    {
-                      alpha: 1.0,
-                      color: strokeRgb,
-                      width: strokeWidthVal,
-                    },
-                  ]
-                : [],
-          },
-        ],
+        styles: content.styles,
         text: combinedText,
       }),
       ...buildTextMaterialFields(
