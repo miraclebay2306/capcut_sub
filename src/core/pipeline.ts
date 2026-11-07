@@ -380,7 +380,34 @@ export async function runPipeline(
     closeCapCutPC();
     await delay(300);
     const draft = loadDraft(config.projectDir);
-    const cues = buildCues(sentences, config.subtitleStyle);
+    const language = config.subtitleLanguage ?? "lao";
+    const sentenceStyle = { ...config.subtitleStyle, animationMode: "sentence" as const };
+    const cues = language === "lao"
+      ? buildCues(sentences, config.subtitleStyle)
+      : buildCues(
+          sentences.map((sentence) => ({
+            ...sentence,
+            text: language === "vietnamese"
+              ? sentence.vietnameseText || sentence.text
+              : sentence.text,
+            words: [],
+          })),
+          sentenceStyle,
+        );
+    if (language === "both") {
+      const translatedSentences = new Set<number>();
+      for (const cue of cues) {
+        const sentenceIndex = sentences.findIndex(
+          (item) => item.startSec <= cue.startSec && item.endSec > cue.startSec,
+        );
+        const sentence = sentenceIndex >= 0 ? sentences[sentenceIndex] : undefined;
+        const vietnamese = sentence?.vietnameseText?.trim();
+        if (vietnamese && cue.runs.length > 0 && !translatedSentences.has(sentenceIndex)) {
+          cue.runs[0].text = `${cue.runs[0].text}\n${vietnamese}`;
+          translatedSentences.add(sentenceIndex);
+        }
+      }
+    }
     if (!cues || cues.length === 0) {
       throw new Error("ບໍ່ສາມາດສ້າງซັບໄຕເຕີ້ນໄດ້ (ไม่สามารถสร้างข้อความซับไตเติ้ลได้)");
     }

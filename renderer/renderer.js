@@ -84,6 +84,7 @@ function saveUserSettings() {
       transcriptionModel: document.getElementById("transcriptionModel")?.value || "gemini-3.5-flash",
       speechStyle: speechStyleEl ? speechStyleEl.value : "verbatim",
       glossary: document.getElementById("glossary")?.value || "",
+      subtitleLanguage: document.getElementById("subtitleLanguage")?.value || "lao",
     };
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   } catch (err) {
@@ -138,6 +139,9 @@ function loadUserSettings() {
     if (settings.glossary !== undefined && document.getElementById("glossary")) {
       document.getElementById("glossary").value = settings.glossary;
     }
+    if (settings.subtitleLanguage && document.getElementById("subtitleLanguage")) {
+      document.getElementById("subtitleLanguage").value = settings.subtitleLanguage;
+    }
   } catch (err) {
     console.warn("Could not load user settings:", err);
   }
@@ -164,6 +168,7 @@ document.querySelectorAll(".mode-card").forEach((card) => {
   "backgroundBanner",
   "fontFamilySelect",
   "glossary",
+  "subtitleLanguage",
   "transcriptionEngine",
   "transcriptionModel",
 ].forEach((id) => {
@@ -372,6 +377,7 @@ function collectConfig() {
       linkSubtitleToClip: true,
       saveMode: "overwrite",
     },
+    subtitleLanguage: document.getElementById("subtitleLanguage").value,
   };
 }
 

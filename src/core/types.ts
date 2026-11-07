@@ -11,6 +11,7 @@ export type AnimationMode = "sentence" | "word_by_word" | "karaoke";
 export type SpeechStyle = "polished" | "verbatim";
 export type SaveMode = "copy" | "overwrite";
 export type TranscriptionEngine = "gemini";
+export type SubtitleLanguage = "lao" | "vietnamese" | "both";
 
 export interface SubtitleStyleConfig {
   fontSize: FontSize;
@@ -41,6 +42,7 @@ export interface PipelineConfig {
   subtitleStyle: SubtitleStyleConfig;
   transcription: TranscriptionConfig;
   timeline: TimelineConfig;
+  subtitleLanguage: SubtitleLanguage;
 }
 
 /** A single transcribed word with word-level timing, in seconds relative to audio. */
@@ -52,6 +54,7 @@ export interface TranscribedWord {
 
 export interface TranscribedSentence {
   text: string; // full Lao sentence
+  vietnameseText?: string;
   startSec: number;
   endSec: number;
   words: TranscribedWord[];
