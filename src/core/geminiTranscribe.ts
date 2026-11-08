@@ -18,8 +18,8 @@ function buildPrompt(config: TranscriptionConfig): string {
     : "";
 
   return [
-    "You are an expert Lao audio transcriptionist and Vietnamese translator.",
-    "Listen carefully and transcribe ALL spoken speech into Lao script (ອັກສອນລາວ), sentence by sentence. For every Lao sentence, provide a natural Vietnamese translation in vietnameseText. Translation must preserve meaning and sentence order.",
+    "You are an expert Lao audio transcriptionist.",
+    "Listen carefully to the audio file and transcribe ALL spoken speech into Lao script (ອັກສອນລາວ), sentence by sentence.",
     "CRITICAL FOR TIMING & AUDIO SYNCHRONIZATION:",
     "1. You MUST listen carefully at high temporal resolution and provide precise millisecond-level word timestamps (startSec and endSec) for EVERY single word in 'words'.",
     "2. Each word's startSec MUST be the exact acoustic onset (the exact millisecond the speaker starts saying that specific word in audio).",
@@ -33,7 +33,6 @@ function buildPrompt(config: TranscriptionConfig): string {
   "sentences": [
     {
       "text": "<lao sentence>",
-      "vietnameseText": "<Vietnamese translation>",
       "startSec": 0.0,
       "endSec": 0.0,
       "words": [
