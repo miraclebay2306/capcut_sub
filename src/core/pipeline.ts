@@ -367,7 +367,7 @@ export async function runPipeline(
 
     onProgress({
       stage: "transcribing",
-      message: "ກຳລັງຖອດຂໍ້ຄວາມ...",
+      message: "ກຳລັງຟັງ ແລະ ຖອດສຽງດ້ວຍ Google AI (ກະລຸນາລໍຖ້າ 10-25 ວິນາທີ)...",
       percent: 35,
     });
     const { sentences } = await transcribeLao(

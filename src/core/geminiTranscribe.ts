@@ -88,6 +88,19 @@ function isQuotaOrRateLimitError(errMessage: string): boolean {
   );
 }
 
+function isServerOverloadedError(errMessage: string): boolean {
+  return (
+    errMessage.includes("503") ||
+    errMessage.includes("500") ||
+    errMessage.includes("502") ||
+    errMessage.includes("504") ||
+    errMessage.includes("overloaded") ||
+    errMessage.includes("The model is overloaded") ||
+    errMessage.includes("Service Unavailable") ||
+    errMessage.includes("Internal error")
+  );
+}
+
 function isNotFoundError(errMessage: string): boolean {
   return errMessage.includes("404") || errMessage.includes("is not found");
 }
@@ -118,7 +131,17 @@ export async function queryAvailableGeminiModels(apiKey: string): Promise<string
       if (Array.isArray(data.models)) {
         return data.models
           .filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
-          .map((m: any) => m.name.replace("models/", ""));
+          .map((m: any) => m.name.replace("models/", ""))
+          .filter((name: string) => {
+            const lower = name.toLowerCase();
+            return (
+              !lower.includes("image") &&
+              !lower.includes("tts") &&
+              !lower.includes("lyria") &&
+              !lower.includes("computer-use") &&
+              !lower.includes("embedding")
+            );
+          });
       }
     }
   } catch {}
@@ -148,13 +171,7 @@ export async function transcribeWithGemini(
   const defaultFallbacks = [
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
-    "gemini-3.5-pro",
-    "gemini-3.0-flash",
-    "gemini-3.0-pro",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
+    "gemini-3.5-transcribe",
   ];
 
   const pool = dynamicModels.length > 0 ? dynamicModels : defaultFallbacks;
@@ -247,6 +264,19 @@ export async function transcribeWithGemini(
           } else {
             onStatusUpdate?.(
               `Model ${currentModelName} ເກີນໂຄຕ້າ API. ກຳລັງປ່ຽນໄປໃຊ້ Model ສຳຮອງ...`
+            );
+            break;
+          }
+        } else if (isServerOverloadedError(errMsg)) {
+          if (attempt < 2) {
+            onStatusUpdate?.(
+              `Google Server ຕິດຂັດ (503 Overloaded). ກຳລັງລອງໃໝ່ໃນ 2 ວິນາທີ...`
+            );
+            await delay(2000);
+            continue;
+          } else {
+            onStatusUpdate?.(
+              `Model ${currentModelName} ຕິດ 503 Overload. ກຳລັງສະຫຼັບໄປໃຊ້ Model ສຳຮອງອັດຕະໂນມັດ...`
             );
             break;
           }
