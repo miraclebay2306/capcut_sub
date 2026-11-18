@@ -10,16 +10,16 @@ export interface GeminiTranscriptionResult {
 function buildPrompt(config: TranscriptionConfig): string {
   const styleInstruction =
     config.speechStyle === "polished"
-      ? "Produce a clean transcription in Lao script (ອັກສອນລາວ). Omit vocal hesitations (like um, uh, er, ເອີ, ອ່ະ), but transcribe every spoken sentence completely without skipping any words or phrases."
-      : "Produce a strictly verbatim transcription in Lao script (ອັກສອນລາວ). Capture every spoken word accurately.";
+      ? "Produce a clean, natural transcription in pristine Lao script (ອັກສອນລາວ). Omit vocal hesitations (like um, uh, er, ເອີ, ອ່ະ), but transcribe every spoken sentence completely without skipping any words or meaning."
+      : "Produce a strictly verbatim transcription in pristine Lao script (ອັກສອນລາວ). Capture every spoken word accurately.";
 
   let bilingualInstruction = "";
-  if (config.bilingualMode === "lao_thai") {
+  if (config.bilingualMode === "lao_vietnamese") {
     bilingualInstruction =
-      "BILINGUAL SUBTITLE REQUIREMENT: For every sentence's 'text' field, output TWO lines: Line 1 in Lao script (ອັກສອນລາວ), followed by a newline (\\n), followed by Line 2 in Thai script (ภาษาไทย) natural translation. Example: 'ສະບາຍດີທຸກຄົນ\\nสวัสดีทุกคน'. In 'words', keep the Lao words and acoustic timestamps.";
+      "BILINGUAL SUBTITLE REQUIREMENT: For every sentence's 'text' field, output TWO lines: Line 1 in native Lao script (ອັກສອນລາວ), followed by a newline (\\n), followed by Line 2 in Vietnamese (Tiếng Việt) natural translation with correct Vietnamese diacritics/accents. Example: 'ສະບາຍດີທຸກຄົນ\\nXin chào mọi người'. In 'words', keep the Lao words and acoustic timestamps.";
   } else if (config.bilingualMode === "lao_english") {
     bilingualInstruction =
-      "BILINGUAL SUBTITLE REQUIREMENT: For every sentence's 'text' field, output TWO lines: Line 1 in Lao script (ອັກສອນລາວ), followed by a newline (\\n), followed by Line 2 in English translation. Example: 'ສະບາຍດີທຸກຄົນ\\nHello everyone'. In 'words', keep the Lao words and acoustic timestamps.";
+      "BILINGUAL SUBTITLE REQUIREMENT: For every sentence's 'text' field, output TWO lines: Line 1 in native Lao script (ອັກສອນລາວ), followed by a newline (\\n), followed by Line 2 in English translation. Example: 'ສະບາຍດີທຸກຄົນ\\nHello everyone'. In 'words', keep the Lao words and acoustic timestamps.";
   }
 
   const glossaryBlock = config.glossary.trim()
@@ -27,8 +27,18 @@ function buildPrompt(config: TranscriptionConfig): string {
     : "";
 
   return [
-    "You are an expert Lao audio transcriptionist.",
-    "Listen carefully to the audio file and transcribe ALL spoken speech into Lao script (ອັກສອນລາວ), sentence by sentence.",
+    "You are a native Lao linguistic expert and master transcriber.",
+    "Listen carefully to the audio file and transcribe ALL spoken speech into authentic, grammatically correct Lao script (ອັກສອນລາວ), sentence by sentence.",
+    "",
+    "CRITICAL LAO ORTHOGRAPHY & ACCURACY RULES (ຄືຄົນລາວແທ້ໆຂຽນ):",
+    "- 100% AUTHENTIC LAO SPELLING: Use proper Lao orthography following the Lao Ministry of Education standard.",
+    "- NEVER BORROW THAI SPELLING PATTERNS: Never mix Thai orthography or loan patterns (e.g. use 'ບໍ່' NEVER 'ບໍ', 'ແມ່ນ' NEVER 'ແນ່ນ', 'ເຈົ້າ' NEVER 'ເຈົາ', 'ຂອບໃຈ' NEVER 'ຂອບໄຈ', 'ເດີ້'/'ເດີ', 'ຫວາ'/'ບໍ່', 'ແນວໃດ', 'ກໍ'/'ກໍ່').",
+    "- ACCURATE TONE MARKS: Accurately place Mai Ek (-່) and Mai Tho (-້) according to actual spoken Lao pitch and consonant classes (High/Mid/Low).",
+    "- CONVERSATIONAL ACCURACY: Common Lao spoken idioms ('ສະບາຍດີ', 'ໂດຍ', 'ເຈົ້າ', 'ແມ່ນແລ້ວ', 'ຂອບໃຈຫຼາຍໆ', 'ເນາະ', 'ຊັ້ນເດີ', 'ບາດນີ້', 'ພໍດີ', 'ແທ້ຫວາ') must be transcribed with pristine Lao spelling.",
+    "- NO RANDOM CONSONANT DROPS: Preserve proper Lao vowels and ligature consonants (ເຊັ່ນ ຫງ, ຫນ/ໜ, ຫມ/ໝ, ຫຼ).",
+    "- NATURAL WORD SEGMENTATION IN 'words': In the 'words' array, each item MUST be a complete, unbroken Lao word or compound (ເຊັ່ນ 'ລະບົບເຮົາ', 'ຮອງຮັບ', 'ທຸກອຸປະກອນ', 'ຖືວ່າເປັນການ', 'ແນະນຳ', 'ໂປຣໂມຊັ່ນ'). NEVER break compound words in half.",
+    "- PROPER SPACING IN 'text': In 'text', separate grammatical clauses and breathing pauses with a natural space (ເຊັ່ນ 'ລະບົບເຮົາຮອງຮັບ ທຸກອຸປະກອນ') so that subtitles can be grouped naturally without cutting words.",
+    "",
     "CRITICAL FOR TIMING & AUDIO SYNCHRONIZATION:",
     "1. You MUST listen carefully at high temporal resolution and provide precise millisecond-level word timestamps (startSec and endSec) for EVERY single word in 'words'.",
     "2. Each word's startSec MUST be the exact acoustic onset (the exact millisecond the speaker starts saying that specific word in audio).",

@@ -64,8 +64,8 @@ function updateSubtitlePreview() {
   const bilingual = document.getElementById("bilingualMode")?.value || "off";
 
   let bilingualSuffix = "";
-  if (bilingual === "lao_thai") {
-    bilingualSuffix = "<br><span style='font-size:0.82em;opacity:0.88'>ยินดีต้อนรับสู่โปรแกรม</span>";
+  if (bilingual === "lao_vietnamese") {
+    bilingualSuffix = "<br><span style='font-size:0.82em;opacity:0.88'>Chào mừng bạn đến với CapCut</span>";
   } else if (bilingual === "lao_english") {
     bilingualSuffix = "<br><span style='font-size:0.82em;opacity:0.88'>Welcome to CapCut Subtitler</span>";
   }
@@ -74,9 +74,6 @@ function updateSubtitlePreview() {
     previewEl.innerHTML = autoAccent
       ? `<span>ມື້ນີ້ເຮົາຈະເຮັດ <span style="color:${accentHex}">3</span> ຢ່າງ</span>${bilingualSuffix}`
       : `<span>ມື້ນີ້ເຮົາຈະເຮັດ 3 ຢ່າງ</span>${bilingualSuffix}`;
-  } else if (selectedAnimationMode === "karaoke") {
-    const highlight = colorKey === "white" ? "#F2C641" : textColors[colorKey] || "#F2C641";
-    previewEl.innerHTML = `<span style="color:${highlight}">ສະບາຍດີ! ຍິນດີ</span><span style="color:rgba(255,255,255,0.58)"> ຕ້ອນຮັບ</span>${bilingualSuffix}`;
   } else {
     previewEl.innerHTML = autoAccent
       ? `<span>ສະບາຍດີ! ໂປຣໂມຊັ່ນ <span style="color:${accentHex}">100% ຟຣີ</span></span>${bilingualSuffix}`
