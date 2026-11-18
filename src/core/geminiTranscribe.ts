@@ -140,15 +140,17 @@ export async function transcribeWithGemini(
   const audioBase64 = audioBytes.toString("base64");
   const prompt = buildPrompt(config);
 
-  const primaryModel = config.model || "gemini-3.5-flash-lite";
+  const primaryModel = config.model || "gemini-3.5-flash";
 
   // Check models supported in real-time by the user's specific API key
   const dynamicModels = await queryAvailableGeminiModels(apiKey);
 
   const defaultFallbacks = [
-    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-pro",
     "gemini-3.0-flash",
+    "gemini-3.0-pro",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",

@@ -364,13 +364,14 @@ let lastGeneratedSrt = "";
 
 const modelOptionsByEngine = {
   gemini: [
-    { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite (ແນະນຳ - ໄວ, ໂຄຕ້າໃຫຍ່, ລຸ້ນໃໝ່)" },
-    { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash (ຄຸນນະພາບສູງ ລຸ້ນໃໝ່)" },
+    { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash (ລຸ້ນໃໝ່ລ່າສຸດ 🔥 - ແມ້ນຢຳ, ໄວ, ແນະນຳ)" },
+    { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite (ໄວສຸດ ⚡, ໂຄຕ້າໃຫຍ່)" },
+    { value: "gemini-3.5-pro", label: "Gemini 3.5 Pro (ຄຸນນະພາບສູງສຸດ 💎)" },
     { value: "gemini-3.0-flash", label: "Gemini 3.0 Flash" },
+    { value: "gemini-3.0-pro", label: "Gemini 3.0 Pro" },
     { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
     { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
     { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
-    { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
   ],
 };
 
@@ -382,18 +383,26 @@ async function refreshDynamicModels(apiKey) {
       const currentVal = transcriptionModelSelect.value;
       transcriptionModelSelect.innerHTML = "";
       
-      // Sort flash models to top
+      // Sort newest 3.5 models to top, prioritizing Flash models
       const sorted = [...liveModels].sort((a, b) => {
-        const aFlash = a.includes("flash") ? 1 : 0;
-        const bFlash = b.includes("flash") ? 1 : 0;
-        return bFlash - aFlash;
+        const versionScore = (name) => {
+          if (name.includes("3.5")) return 50;
+          if (name.includes("3.0") || name.includes("3-")) return 40;
+          if (name.includes("2.5")) return 30;
+          if (name.includes("2.0")) return 20;
+          return 10;
+        };
+        const flashScore = (name) => (name.includes("flash") ? 5 : 0);
+        return (versionScore(b) + flashScore(b)) - (versionScore(a) + flashScore(a));
       });
 
       for (const m of sorted) {
         const opt = document.createElement("option");
         opt.value = m;
         let badge = "";
-        if (m === "gemini-3.5-flash-lite") badge = " (ແນະນຳ - ໂຄຕ້າໃຫຍ່)";
+        if (m === "gemini-3.5-flash") badge = " (ລຸ້ນໃໝ່ລ່າສຸດ 🔥 - ແນະນຳ)";
+        else if (m === "gemini-3.5-flash-lite") badge = " (ໄວສຸດ ⚡ - ໂຄຕ້າໃຫຍ່)";
+        else if (m === "gemini-3.5-pro") badge = " (ຄຸນນະພາບສູງສຸດ 💎)";
         else if (m.includes("flash")) badge = " (ໄວ/Flash)";
         else if (m.includes("pro")) badge = " (ຄຸນນະພາບສູງ)";
         opt.textContent = `${m}${badge}`;
@@ -402,6 +411,8 @@ async function refreshDynamicModels(apiKey) {
 
       if (sorted.includes(currentVal)) {
         transcriptionModelSelect.value = currentVal;
+      } else if (sorted.includes("gemini-3.5-flash")) {
+        transcriptionModelSelect.value = "gemini-3.5-flash";
       } else if (sorted.includes("gemini-3.5-flash-lite")) {
         transcriptionModelSelect.value = "gemini-3.5-flash-lite";
       } else if (sorted.length > 0) {
