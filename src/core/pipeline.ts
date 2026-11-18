@@ -198,6 +198,10 @@ function closeCapCutPC(): void {
     "CapCutRender.exe",
     "CapCutWorker.exe",
     "CapCutService.exe",
+    "VEHelper.exe",
+    "VEDetector.exe",
+    "VECrashHandler.exe",
+    "ttdaemon.exe",
     "JianyingPro.exe",
     "JianyingProMain.exe",
   ];

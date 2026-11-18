@@ -728,65 +728,83 @@ export function insertLaoSubtitles(
     const entranceEffect = style.entranceEffect || "pop_bounce";
     const keyframeId = randomUUID();
     let keyframeList: any[] = [];
+    let commonKeyframes: any[] = [];
 
     if (entranceEffect === "pop_bounce") {
       // Alex Hormozi / TikTok Pop-Bounce:
-      // Starts at 1.22 scale, bounces slightly below 1.0 (0.96) at ~90ms, settles at 1.0 at ~160ms
-      const popDurUs = Math.min(160_000, Math.floor(durationUs * 0.45));
-      const midOffset = Math.floor(popDurUs * 0.55);
+      // Starts at 1.40 scale, bounces slightly below 1.0 (0.92) at ~90ms, settles at 1.0 at ~180ms
+      const popDurUs = Math.min(180_000, Math.floor(durationUs * 0.45));
+      const midOffset = Math.floor(popDurUs * 0.50);
       keyframeList = [
         {
           id: randomUUID(),
-          property_type: "scale",
+          curveType: "Line",
+          graph: "",
+          property_type: "KFTypeScale",
           time_offset: 0,
-          values: [1.22, 1.22],
+          values: [1.40, 1.40],
         },
         {
           id: randomUUID(),
-          property_type: "scale",
+          curveType: "Line",
+          graph: "",
+          property_type: "KFTypeScale",
           time_offset: midOffset,
-          values: [0.96, 0.96],
+          values: [0.92, 0.92],
         },
         {
           id: randomUUID(),
-          property_type: "scale",
+          curveType: "Line",
+          graph: "",
+          property_type: "KFTypeScale",
           time_offset: popDurUs,
           values: [1.0, 1.0],
         },
       ];
+      commonKeyframes = [
+        {
+          id: keyframeId,
+          keyframe_list: keyframeList,
+          property_type: "KFTypeScale",
+        },
+      ];
     } else if (entranceEffect === "zoom_in") {
-      // Smooth punch-in zoom: 0.80 -> 1.0
-      const zoomDurUs = Math.min(140_000, Math.floor(durationUs * 0.35));
+      // Smooth punch-in zoom: 0.60 -> 1.0
+      const zoomDurUs = Math.min(160_000, Math.floor(durationUs * 0.40));
       keyframeList = [
         {
           id: randomUUID(),
-          property_type: "scale",
+          curveType: "Line",
+          graph: "",
+          property_type: "KFTypeScale",
           time_offset: 0,
-          values: [0.80, 0.80],
+          values: [0.60, 0.60],
         },
         {
           id: randomUUID(),
-          property_type: "scale",
+          curveType: "Line",
+          graph: "",
+          property_type: "KFTypeScale",
           time_offset: zoomDurUs,
           values: [1.0, 1.0],
         },
       ];
-    } else {
-      keyframeList = [
+      commonKeyframes = [
         {
-          id: randomUUID(),
-          property_type: "scale",
-          time_offset: 0,
-          values: [1.0, 1.0],
+          id: keyframeId,
+          keyframe_list: keyframeList,
+          property_type: "KFTypeScale",
         },
       ];
     }
 
-    json.keyframes.texts.push({
-      id: keyframeId,
-      keyframe_list: keyframeList,
-      property_type: "scale",
-    });
+    if (commonKeyframes.length > 0) {
+      json.keyframes.texts.push({
+        id: keyframeId,
+        keyframe_list: keyframeList,
+        property_type: "KFTypeScale",
+      });
+    }
 
     const segment: any = {
       id: randomUUID(),
@@ -814,7 +832,8 @@ export function insertLaoSubtitles(
         target_follow_material_id: "",
         vertical_pos_type: 0,
       },
-      keyframe_refs: [keyframeId],
+      common_keyframes: commonKeyframes,
+      keyframe_refs: commonKeyframes.length > 0 ? [keyframeId] : [],
       extra_material_refs: [] as string[],
       render_index: 0,
     };
@@ -924,9 +943,45 @@ export function saveDraft(loaded: LoadedDraft, projectDir: string, saveMode: "co
       ? loaded.path
       : path.join(projectDir, "draft_content_edited.json");
 
-  writeTextFileDurably(outPath, JSON.stringify(loaded.json, null, 2));
+  const contentStr = JSON.stringify(loaded.json, null, 2);
+  writeTextFileDurably(outPath, contentStr);
 
   if (saveMode === "overwrite") {
+    // 1. Sync all sub-timelines in projectDir/Timelines/ (CapCut 9+ multi-timeline architecture)
+    const timelinesDir = path.join(projectDir, "Timelines");
+    if (fs.existsSync(timelinesDir)) {
+      try {
+        const subdirs = fs.readdirSync(timelinesDir, { withFileTypes: true });
+        for (const sub of subdirs) {
+          if (sub.isDirectory()) {
+            const subDraftPath = path.join(timelinesDir, sub.name, "draft_content.json");
+            if (fs.existsSync(subDraftPath)) {
+              writeTextFileDurably(subDraftPath, contentStr);
+              const now = new Date();
+              try { fs.utimesSync(subDraftPath, now, now); } catch {}
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not sync sub-timelines:", err);
+      }
+    }
+
+    // 2. Synchronize crash-recovery and template .tmp files so CapCut doesn't restore old blank state
+    try {
+      const allFiles = fs.readdirSync(projectDir);
+      for (const f of allFiles) {
+        if (f.endsWith(".tmp") || f.endsWith(".bak")) {
+          const target = path.join(projectDir, f);
+          try {
+            writeTextFileDurably(target, contentStr);
+            const now = new Date();
+            fs.utimesSync(target, now, now);
+          } catch {}
+        }
+      }
+    } catch {}
+
     const metaPath = path.join(projectDir, "draft_meta_info.json");
     if (fs.existsSync(metaPath)) {
       try {
