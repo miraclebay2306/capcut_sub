@@ -19,6 +19,8 @@
 })();
 
 let selectedAnimationMode = "word_by_word";
+let selectedEntranceEffect = "pop_bounce";
+let currentInteractiveSubtitles = [];
 
 function getSelectedFontFamily() {
   return "Noto Sans Lao Regular";
@@ -38,6 +40,8 @@ function updateSubtitlePreview() {
     white: "#FFFFFF",
     yellow: "#F2C641",
     neon_green: "#39FF14",
+    hot_pink: "#FF2A85",
+    cyan: "#00F0FF",
   };
 
   const size = document.getElementById("fontSize").value;
@@ -63,6 +67,31 @@ function updateSubtitlePreview() {
   } else {
     previewEl.innerHTML = `<span>ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler</span>`;
   }
+
+  // Adjust vertical placement inside TikTok mockup based on position setting
+  const pos = document.getElementById("position")?.value || "lower_center";
+  const stage = document.getElementById("tiktokStage");
+  if (stage) {
+    if (pos === "center_screen") {
+      stage.style.alignItems = "center";
+      stage.style.paddingBottom = "0px";
+    } else if (pos === "lower_center") {
+      stage.style.alignItems = "flex-end";
+      stage.style.paddingBottom = "28px";
+    } else {
+      stage.style.alignItems = "flex-end";
+      stage.style.paddingBottom = "6px";
+    }
+  }
+
+  // Visual Entrance Pop / Zoom trigger
+  previewEl.classList.remove("animate-pop", "animate-zoom");
+  void previewEl.offsetWidth; // Reflow
+  if (selectedEntranceEffect === "pop_bounce") {
+    previewEl.classList.add("animate-pop");
+  } else if (selectedEntranceEffect === "zoom_in") {
+    previewEl.classList.add("animate-zoom");
+  }
 }
 
 const SETTINGS_STORAGE_KEY = "capcut_lao_subtitler_user_settings";
@@ -80,8 +109,9 @@ function saveUserSettings() {
       fontFamilySelect: "Noto Sans Lao Regular",
       fontFamily: "Noto Sans Lao Regular",
       selectedAnimationMode: selectedAnimationMode || "word_by_word",
+      selectedEntranceEffect: selectedEntranceEffect || "pop_bounce",
       transcriptionEngine: document.getElementById("transcriptionEngine")?.value || "gemini",
-      transcriptionModel: document.getElementById("transcriptionModel")?.value || "gemini-3.5-flash",
+      transcriptionModel: document.getElementById("transcriptionModel")?.value || "gemini-2.5-flash",
       speechStyle: speechStyleEl ? speechStyleEl.value : "verbatim",
       glossary: document.getElementById("glossary")?.value || "",
     };
@@ -121,8 +151,19 @@ function loadUserSettings() {
 
     if (settings.selectedAnimationMode) {
       selectedAnimationMode = settings.selectedAnimationMode;
-      document.querySelectorAll(".mode-card").forEach((card) => {
+      document.querySelectorAll("#animationModeGroup .mode-card").forEach((card) => {
         if (card.dataset.mode === selectedAnimationMode) {
+          card.classList.add("is-selected");
+        } else {
+          card.classList.remove("is-selected");
+        }
+      });
+    }
+
+    if (settings.selectedEntranceEffect) {
+      selectedEntranceEffect = settings.selectedEntranceEffect;
+      document.querySelectorAll("#entranceEffectGroup .mode-card").forEach((card) => {
+        if (card.dataset.effect === selectedEntranceEffect) {
           card.classList.add("is-selected");
         } else {
           card.classList.remove("is-selected");
@@ -143,13 +184,25 @@ function loadUserSettings() {
   }
 }
 
-document.querySelectorAll(".mode-card").forEach((card) => {
+document.querySelectorAll("#animationModeGroup .mode-card").forEach((card) => {
   card.addEventListener("click", () => {
     document
-      .querySelectorAll(".mode-card")
+      .querySelectorAll("#animationModeGroup .mode-card")
       .forEach((c) => c.classList.remove("is-selected"));
     card.classList.add("is-selected");
     selectedAnimationMode = card.dataset.mode;
+    updateSubtitlePreview();
+    saveUserSettings();
+  });
+});
+
+document.querySelectorAll("#entranceEffectGroup .mode-card").forEach((card) => {
+  card.addEventListener("click", () => {
+    document
+      .querySelectorAll("#entranceEffectGroup .mode-card")
+      .forEach((c) => c.classList.remove("is-selected"));
+    card.classList.add("is-selected");
+    selectedEntranceEffect = card.dataset.effect;
     updateSubtitlePreview();
     saveUserSettings();
   });
@@ -197,23 +250,40 @@ toggleKeyVisibility.addEventListener("click", () => {
 });
 
 const rememberKeyCheckbox = document.getElementById("rememberKey");
+const tiktokSafeZoneToggle = document.getElementById("tiktokSafeZoneToggle");
+const tiktokMockup = document.getElementById("tiktokMockup");
+
+tiktokSafeZoneToggle?.addEventListener("change", () => {
+  if (tiktokSafeZoneToggle.checked) {
+    tiktokMockup?.classList.remove("hide-overlay");
+  } else {
+    tiktokMockup?.classList.add("hide-overlay");
+  }
+});
 const projectDirInput = document.getElementById("projectDir");
 const browseDirBtn = document.getElementById("browseDir");
 const checkProjectBtn = document.getElementById("checkProjectBtn");
 const projectCheckResult = document.getElementById("projectCheckResult");
 const runSummaryPanel = document.getElementById("runSummaryPanel");
 const runSummaryBody = document.getElementById("runSummaryBody");
+const extractSubtitlesBtn = document.getElementById("extractSubtitlesBtn");
+const extractedSubtitlesPanel = document.getElementById("extractedSubtitlesPanel");
+const exportGeneratedSrtBtn = document.getElementById("exportGeneratedSrtBtn");
 const transcriptionEngineSelect = document.getElementById(
   "transcriptionEngine",
 );
 const transcriptionModelSelect = document.getElementById("transcriptionModel");
 
+let lastExtractedData = null;
+let lastGeneratedSrt = "";
+
 const modelOptionsByEngine = {
   gemini: [
-    { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite (ໂຄຕ້າຫຼາຍ 500 RPD - ແນະນຳ)" },
-    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (ໄວ & ຄວາມແນ່ນອນສູງ)" },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (ແນະນຳ - ໄວ, ແມ້ນຢຳ, ໂຄຕ້າໃຫຍ່)" },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (ມາດຕະຖານ ລຸ້ນໃໝ່)" },
+    { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash (ລຸ້ນສຳຮອງ ສະຖຽນສູງ)" },
+    { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro (ຄຸນນະພາບສູງສຸດ ສຳລັບສຽງຍາກ)" },
     { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite (ໂຄຕ້າຫວ່າງ)" },
-    { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash (ໂຄຕ້າເຕັມ 20 RPD)" },
   ],
 };
 
@@ -332,6 +402,167 @@ checkProjectBtn?.addEventListener("click", async () => {
   await validateSelectedProject();
 });
 
+function renderExtractedSubtitles(result) {
+  if (!extractedSubtitlesPanel) return;
+  if (!result || !result.ok || result.count === 0) {
+    const msg = result?.error || "ບໍ່ພົບຊັບໄຕເຕີ້ນໃນໂຄງການນີ້ (ບໍ່ມີຂໍ້ຄວາມເທິງ text track).";
+    setStatusCard(
+      extractedSubtitlesPanel,
+      "warning",
+      `<strong>ບໍ່ພົບຊັບໄຕເຕີ້ນ</strong><div class="summary-note">${escapeHtml(msg)}</div>`
+    );
+    return;
+  }
+
+  const previewItems = result.subtitles.slice(0, 10).map((s) => `
+    <div class="sub-preview-item">
+      <span class="sub-preview-time">${escapeHtml(s.startSec)}s - ${escapeHtml(s.endSec)}s</span>
+      <span class="sub-preview-text">${escapeHtml(s.text)}</span>
+    </div>
+  `).join("");
+
+  const moreNotice = result.count > 10 ? `<div class="text-xs text-muted mt-1.5 text-center">... ແລະ ອີກ ${result.count - 10} ຂໍ້ຄວາມ</div>` : "";
+
+  setStatusCard(
+    extractedSubtitlesPanel,
+    "ok",
+    `<div class="flex items-center justify-between mb-2">
+      <strong>ດຶງຊັບໄຕເຕີ້ນສຳເລັດ: ພົບທັງໝົດ ${escapeHtml(result.count)} ຂໍ້ຄວາມ</strong>
+      <div class="flex gap-2">
+        <button id="exportExtractedSrtBtn" type="button" class="btn-secondary text-xs px-2.5 py-1">ດາວໂຫຼດ .SRT</button>
+        <button id="exportExtractedTxtBtn" type="button" class="btn-secondary text-xs px-2.5 py-1">ດາວໂຫຼດ .TXT</button>
+      </div>
+    </div>
+    <div class="sub-preview-list">
+      ${previewItems}
+    </div>
+    ${moreNotice}`
+  );
+
+  document.getElementById("exportExtractedSrtBtn")?.addEventListener("click", async () => {
+    if (!lastExtractedData?.srtContent) return;
+    await window.capcutLao.exportSubtitlesFile("extracted_subtitles.srt", lastExtractedData.srtContent, "srt");
+  });
+
+  document.getElementById("exportExtractedTxtBtn")?.addEventListener("click", async () => {
+    if (!lastExtractedData?.txtContent) return;
+    await window.capcutLao.exportSubtitlesFile("extracted_transcript.txt", lastExtractedData.txtContent, "txt");
+  });
+}
+
+const interactiveEditorPanel = document.getElementById("interactiveEditorPanel");
+const editorSubCount = document.getElementById("editorSubCount");
+const editorSubList = document.getElementById("editorSubList");
+const applyEditorChangesBtn = document.getElementById("applyEditorChangesBtn");
+
+function renderInteractiveEditor(subtitles) {
+  if (!interactiveEditorPanel || !editorSubList) return;
+  if (!subtitles || subtitles.length === 0) {
+    interactiveEditorPanel.classList.add("hidden");
+    currentInteractiveSubtitles = [];
+    return;
+  }
+
+  currentInteractiveSubtitles = subtitles.map((s) => ({ ...s }));
+  interactiveEditorPanel.classList.remove("hidden");
+  if (editorSubCount) {
+    editorSubCount.textContent = `ທັງໝົດ ${subtitles.length} ຂໍ້ຄວາມ`;
+  }
+
+  editorSubList.innerHTML = currentInteractiveSubtitles
+    .map(
+      (sub, i) => `
+    <div class="editor-sub-item">
+      <span class="editor-sub-index">#${i + 1}</span>
+      <span class="editor-sub-time">${sub.startSec.toFixed(2)}s - ${sub.endSec.toFixed(2)}s</span>
+      <input type="text" class="editor-sub-input" data-index="${i}" value="${escapeHtml(sub.text)}" />
+      <button type="button" class="editor-sub-play" data-index="${i}" title="ກົດເບິ່ງ Live Preview">▶ ຕົວຢ່າງ</button>
+    </div>
+  `
+    )
+    .join("");
+
+  editorSubList.querySelectorAll(".editor-sub-input").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const idx = parseInt(e.target.dataset.index, 10);
+      if (currentInteractiveSubtitles[idx]) {
+        currentInteractiveSubtitles[idx].text = e.target.value;
+      }
+    });
+  });
+
+  editorSubList.querySelectorAll(".editor-sub-play").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const idx = parseInt(e.currentTarget.dataset.index, 10);
+      const sub = currentInteractiveSubtitles[idx];
+      if (!sub) return;
+      const previewEl = document.getElementById("subtitlePreviewText");
+      if (previewEl) {
+        previewEl.innerHTML = `<span>${escapeHtml(sub.text)}</span>`;
+        previewEl.classList.remove("animate-pop", "animate-zoom");
+        void previewEl.offsetWidth;
+        if (selectedEntranceEffect === "pop_bounce") previewEl.classList.add("animate-pop");
+        else if (selectedEntranceEffect === "zoom_in") previewEl.classList.add("animate-zoom");
+      }
+    });
+  });
+}
+
+applyEditorChangesBtn?.addEventListener("click", async () => {
+  const projectDir = projectDirInput.value;
+  if (!projectDir) {
+    statusMessage.textContent = "ກະລຸນາເລືອກໂຟນເດີໂຄງການກ່ອນ.";
+    statusMessage.classList.add("text-danger");
+    return;
+  }
+  if (!currentInteractiveSubtitles || currentInteractiveSubtitles.length === 0) {
+    statusMessage.textContent = "ບໍ່ມີຂໍ້ຄວາມຊັບໄຕເຕີ້ນທີ່ຈະບັນທຶກ.";
+    statusMessage.classList.add("text-danger");
+    return;
+  }
+
+  applyEditorChangesBtn.disabled = true;
+  statusMessage.textContent = "ກຳລັງບັນທຶກການແກ້ໄຂລົງ CapCut...";
+  statusMessage.classList.remove("text-danger");
+
+  const config = collectConfig();
+  const res = await window.capcutLao.applyEditedSubtitles(projectDir, currentInteractiveSubtitles, config);
+  applyEditorChangesBtn.disabled = false;
+
+  if (res.ok) {
+    lastGeneratedSrt = res.srtContent || "";
+    statusMessage.textContent = `ບັນທຶກການແກ້ໄຂສຳເລັດ! ອັບເດດ ${res.subtitlesGenerated} ຂໍ້ຄວາມລົງ CapCut ແລ້ວ ⚡`;
+    renderRunSummary(res);
+    openCapCutBtn?.classList.remove("hidden");
+    if (lastGeneratedSrt && exportGeneratedSrtBtn) {
+      exportGeneratedSrtBtn.classList.remove("hidden");
+    }
+  } else {
+    statusMessage.textContent = `ບັນທຶກລົ້ມເຫຼວ: ${res.error}`;
+    statusMessage.classList.add("text-danger");
+  }
+});
+
+extractSubtitlesBtn?.addEventListener("click", async () => {
+  const projectDir = projectDirInput.value;
+  if (!projectDir) {
+    setStatusCard(extractedSubtitlesPanel, "error", "<strong>ກະລຸນາເລືອກໂຟນເດີໂຄງການກ່ອນ</strong>");
+    return;
+  }
+  setStatusCard(extractedSubtitlesPanel, "warning", "<strong>ກຳລັງດຶງຊັບໄຕເຕີ້ນຈາກໂຄງການ...</strong>");
+  const result = await window.capcutLao.extractSubtitles(projectDir);
+  lastExtractedData = result;
+  renderExtractedSubtitles(result);
+  if (result.ok && result.subtitles.length > 0) {
+    renderInteractiveEditor(result.subtitles);
+  }
+});
+
+exportGeneratedSrtBtn?.addEventListener("click", async () => {
+  if (!lastGeneratedSrt) return;
+  await window.capcutLao.exportSubtitlesFile("generated_subtitles.srt", lastGeneratedSrt, "srt");
+});
+
 // ---------------------------------------------------------------------------
 // Run pipeline
 // ---------------------------------------------------------------------------
@@ -360,6 +591,7 @@ function collectConfig() {
       backgroundBanner: document.getElementById("backgroundBanner").checked,
       fontFamily: getSelectedFontFamily(),
       animationMode: selectedAnimationMode,
+      entranceEffect: selectedEntranceEffect,
     },
     transcription: {
       engine: document.getElementById("transcriptionEngine").value,
@@ -454,12 +686,24 @@ runBtn.addEventListener("click", async () => {
 
   runBtn.disabled = false;
   if (result.ok) {
+    lastGeneratedSrt = result.srtContent || "";
     statusMessage.textContent = `ສຳເລັດແລ້ວ — ສ້າງຊັບໄຕເຕີ້ນ ${result.subtitlesGenerated} ຂໍ້ຄວາມ → ${result.outputPath}`;
     renderRunSummary(result);
     openCapCutBtn?.classList.remove("hidden");
+    if (lastGeneratedSrt && exportGeneratedSrtBtn) {
+      exportGeneratedSrtBtn.classList.remove("hidden");
+    }
+
+    // Auto-open interactive subtitle editor for immediate review & styling
+    window.capcutLao.extractSubtitles(config.projectDir).then((extracted) => {
+      if (extracted?.ok && extracted.subtitles?.length > 0) {
+        renderInteractiveEditor(extracted.subtitles);
+      }
+    });
   } else {
     statusMessage.textContent = `ລົ້ມເຫຼວ: ${result.error}`;
     statusMessage.classList.add("text-danger");
     openCapCutBtn?.classList.add("hidden");
+    exportGeneratedSrtBtn?.classList.add("hidden");
   }
 });

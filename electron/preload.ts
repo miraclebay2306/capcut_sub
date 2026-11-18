@@ -20,6 +20,23 @@ contextBridge.exposeInMainWorld("capcutLao", {
   validateProject: (projectDir: string): Promise<ProjectValidationResult> =>
     ipcRenderer.invoke("validate-project", projectDir),
 
+  extractSubtitles: (projectDir: string) =>
+    ipcRenderer.invoke("extract-subtitles", projectDir),
+
+  applyEditedSubtitles: (
+    projectDir: string,
+    subtitles: any[],
+    config: PipelineConfig
+  ) =>
+    ipcRenderer.invoke("apply-edited-subtitles", projectDir, subtitles, config),
+
+  exportSubtitlesFile: (
+    defaultFileName: string,
+    content: string,
+    extension: "srt" | "txt"
+  ) =>
+    ipcRenderer.invoke("export-subtitles-file", defaultFileName, content, extension),
+
   openCapCut: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("open-capcut"),
 

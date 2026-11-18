@@ -86,11 +86,17 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function stripCodeFences(text: string): string {
-  if (text.startsWith("```")) {
-    return text.replace(/^```(?:json)?\s*/, "").replace(/```\s*$/, "");
+function extractJsonText(text: string): string {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
   }
-  return text;
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return cleaned.substring(firstBrace, lastBrace + 1);
+  }
+  return cleaned;
 }
 
 export async function transcribeWithGemini(
@@ -108,12 +114,13 @@ export async function transcribeWithGemini(
   const audioBase64 = audioBytes.toString("base64");
   const prompt = buildPrompt(config);
 
-  const primaryModel = config.model || "gemini-3.1-flash-lite";
+  const primaryModel = config.model || "gemini-2.5-flash";
   const fallbacks = [
-    "gemini-3.1-flash-lite",
     "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
     "gemini-2.5-flash-lite",
-    "gemini-3.5-flash",
   ].filter((m) => m !== primaryModel);
   const modelsToTry = [primaryModel, ...fallbacks];
 
@@ -138,7 +145,7 @@ export async function transcribeWithGemini(
         ]);
 
         const raw = result.response.text().trim();
-        const jsonText = stripCodeFences(raw);
+        const jsonText = extractJsonText(raw);
         let parsed: any;
         try {
           parsed = JSON.parse(jsonText);

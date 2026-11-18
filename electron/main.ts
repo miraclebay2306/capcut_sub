@@ -2,6 +2,10 @@ import { app, BrowserWindow, ipcMain, dialog, safeStorage } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { runPipeline, validateProjectDirectory } from "../src/core/pipeline";
+import {
+  extractSubtitlesFromDraft,
+  applySubtitlesToDraft,
+} from "../src/core/draftContentEditor";
 import { PipelineConfig, PipelineProgress } from "../src/core/types";
 
 let mainWindow: BrowserWindow | null = null;
@@ -98,6 +102,41 @@ ipcMain.handle("run-pipeline", async (event, config: PipelineConfig) => {
 ipcMain.handle("validate-project", async (_event, projectDir: string) => {
   return validateProjectDirectory(projectDir);
 });
+
+// ---------------------------------------------------------------------------
+// IPC: subtitle extraction & export
+// ---------------------------------------------------------------------------
+ipcMain.handle("extract-subtitles", async (_event, projectDir: string) => {
+  return extractSubtitlesFromDraft(projectDir);
+});
+
+ipcMain.handle(
+  "apply-edited-subtitles",
+  async (_event, projectDir: string, subtitles: any[], config: PipelineConfig) => {
+    return applySubtitlesToDraft(projectDir, subtitles, config);
+  }
+);
+
+ipcMain.handle(
+  "export-subtitles-file",
+  async (_event, defaultFileName: string, content: string, extension: "srt" | "txt") => {
+    if (!mainWindow) return { success: false, error: "Window not available" };
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "ບັນທຶກໄຟລ໌ຊັບໄຕເຕີ້ນ",
+      defaultPath: defaultFileName,
+      filters: [
+        extension === "srt"
+          ? { name: "SubRip Subtitle (.srt)", extensions: ["srt"] }
+          : { name: "Text File (.txt)", extensions: ["txt"] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+    fs.writeFileSync(result.filePath, content, "utf8");
+    return { success: true, filePath: result.filePath };
+  }
+);
 
 // ---------------------------------------------------------------------------
 // IPC: open CapCut application

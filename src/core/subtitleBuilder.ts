@@ -24,16 +24,18 @@ const TEXT_COLOR_HEX: Record<SubtitleStyleConfig["textColor"], string> = {
   white: "#FFFFFFFF",
   yellow: "#FFD400FF",
   neon_green: "#39FF14FF",
+  hot_pink: "#FF2A85FF",
+  cyan: "#00F0FFFF",
 };
 
 const KARAOKE_CHUNK_LIMITS: Record<
   SubtitleStyleConfig["fontSize"],
   { maxWords: number; maxChars: number }
 > = {
-  small: { maxWords: 5, maxChars: 24 },
-  medium: { maxWords: 4, maxChars: 20 },
-  large: { maxWords: 3, maxChars: 16 },
-  xl: { maxWords: 2, maxChars: 13 },
+  small: { maxWords: 5, maxChars: 22 },
+  medium: { maxWords: 4, maxChars: 18 },
+  large: { maxWords: 3, maxChars: 15 },
+  xl: { maxWords: 2, maxChars: 12 },
 };
 
 export function resolveFontSizePx(style: SubtitleStyleConfig): number {
@@ -304,14 +306,35 @@ function splitOverlongTimedWords(
   return result;
 }
 
+// TikTok / Reels 9:16 safe line limit: 22 chars prevents text from running into right-side like/comment buttons
+const TIKTOK_SAFE_MAX_CHARS = 22;
+
 function splitSentenceIntoCompactChunks(
   text: string,
   startSec: number,
   endSec: number,
-  maxChars = 50
+  maxChars = TIKTOK_SAFE_MAX_CHARS
 ): SubtitleCue[] {
-  const words = splitTextIntoWords(text);
-  if (words.length === 0) return [];
+  const rawWords = splitTextIntoWords(text);
+  if (rawWords.length === 0) return [];
+
+  // If a Lao phrase has no spaces and exceeds maxChars, split safely without breaking tone marks
+  const words: string[] = [];
+  for (const rw of rawWords) {
+    if (rw.length > maxChars) {
+      let cursor = 0;
+      while (cursor < rw.length) {
+        let take = Math.min(maxChars, rw.length - cursor);
+        while (cursor + take < rw.length && isDetachedLaoSuffixOrMark(rw[cursor + take])) {
+          take++;
+        }
+        words.push(rw.slice(cursor, cursor + take));
+        cursor += take;
+      }
+    } else {
+      words.push(rw);
+    }
+  }
 
   const chunks: string[] = [];
   let currentWords: string[] = [];
@@ -351,19 +374,19 @@ function buildSentenceCues(sentences: TranscribedSentence[]): SubtitleCue[] {
   for (const s of sentences) {
     if (!s.words || s.words.length === 0) {
       if (s.text) {
-        cues.push(...splitSentenceIntoCompactChunks(cleanLaoText(s.text), s.startSec, s.endSec, 50));
+        cues.push(...splitSentenceIntoCompactChunks(cleanLaoText(s.text), s.startSec, s.endSec, TIKTOK_SAFE_MAX_CHARS));
       }
       continue;
     }
 
-    const chunkSize = 12;
+    const chunkSize = 8;
     for (let i = 0; i < s.words.length; i += chunkSize) {
       const chunk = s.words.slice(i, i + chunkSize);
       const chunkStart = chunk[0].startSec;
       const chunkEnd = chunk[chunk.length - 1].endSec;
       const chunkText = joinLaoWords(chunk.map((w) => cleanLaoText(w.word)));
-      if (chunkText.length > 50) {
-        cues.push(...splitSentenceIntoCompactChunks(chunkText, chunkStart, chunkEnd, 50));
+      if (chunkText.length > TIKTOK_SAFE_MAX_CHARS) {
+        cues.push(...splitSentenceIntoCompactChunks(chunkText, chunkStart, chunkEnd, TIKTOK_SAFE_MAX_CHARS));
       } else {
         cues.push({
           startSec: chunkStart,

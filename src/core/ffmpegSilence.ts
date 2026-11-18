@@ -63,8 +63,49 @@ export interface TimelineAudioSegment {
 }
 
 /**
+ * Compresses an audio file to 64kbps 16kHz mono MP3 to reduce upload payload
+ * and stay well under Gemini's 20MB inlineData limit for long videos.
+ */
+export function compressAudioForGemini(
+  inAudioPath: string,
+  outMp3Path: string
+): Promise<string> {
+  return new Promise((resolve) => {
+    const ffmpegPath = resolveFfmpegPath();
+    const args = [
+      "-y",
+      "-i",
+      inAudioPath,
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "64k",
+      outMp3Path,
+    ];
+    const proc = spawn(ffmpegPath, args, { windowsHide: true });
+    let stderr = "";
+    proc.stderr.on("data", (d) => (stderr += d.toString()));
+    proc.on("error", () => resolve(inAudioPath));
+    proc.on("close", (code) => {
+      if (code === 0 && fs.existsSync(outMp3Path)) {
+        resolve(outMp3Path);
+      } else {
+        // Fallback to original WAV if mp3 encoder isn't available
+        resolve(inAudioPath);
+      }
+    });
+  });
+}
+
+/**
  * Extracts and stitches together the audio of ALL video/audio segments on the CapCut timeline
- * into a single unified 16kHz mono WAV file representing the full project timeline.
+ * into a single unified 16kHz mono WAV file representing the full project timeline,
+ * inserting silence gaps where clips do not continuously touch so timing stays 1:1 synchronized.
  */
 export async function extractTimelineAudio(
   segments: TimelineAudioSegment[],
@@ -89,9 +130,47 @@ export async function extractTimelineAudio(
     }
 
     const extractedClips: string[] = [];
+    let timelineCursorSec = 0;
 
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
+
+      // If there is a silence/gap before this segment on the timeline, pad with generated silence
+      if (seg.targetStartSec > timelineCursorSec + 0.05) {
+        const gapSec = seg.targetStartSec - timelineCursorSec;
+        const silenceWav = path.join(
+          require("os").tmpdir(),
+          `capcut-gap-${i}-${Date.now()}.wav`
+        );
+        tempFiles.push(silenceWav);
+
+        await new Promise<void>((resolve) => {
+          const sProc = spawn(
+            ffmpegPath,
+            [
+              "-y",
+              "-f",
+              "lavfi",
+              "-i",
+              "anullsrc=r=16000:cl=mono",
+              "-t",
+              gapSec.toFixed(3),
+              "-c:a",
+              "pcm_s16le",
+              silenceWav,
+            ],
+            { windowsHide: true }
+          );
+          sProc.on("close", () => resolve());
+          sProc.on("error", () => resolve());
+        });
+
+        if (fs.existsSync(silenceWav)) {
+          extractedClips.push(silenceWav);
+          timelineCursorSec = seg.targetStartSec;
+        }
+      }
+
       const clipWav = path.join(
         require("os").tmpdir(),
         `capcut-seg-${i}-${Date.now()}.wav`
@@ -131,7 +210,7 @@ export async function extractTimelineAudio(
         const timer = setTimeout(() => {
           proc.kill("SIGKILL");
           reject(new Error(`FFmpeg timed out extracting clip ${i}`));
-        }, 15000);
+        }, 20000);
 
         proc.stderr.on("data", (d) => (stderr += d.toString()));
         proc.on("error", (e) => {
@@ -153,6 +232,10 @@ export async function extractTimelineAudio(
       });
 
       extractedClips.push(clipWav);
+      timelineCursorSec = Math.max(
+        timelineCursorSec,
+        seg.targetStartSec + (seg.targetDurSec > 0 ? seg.targetDurSec : seg.sourceDurSec / seg.speed)
+      );
     }
 
     if (extractedClips.length === 1) {

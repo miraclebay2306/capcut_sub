@@ -5,9 +5,10 @@
  */
 
 export type FontSize = "small" | "medium" | "large" | "xl";
-export type TextColor = "white" | "yellow" | "neon_green";
+export type TextColor = "white" | "yellow" | "neon_green" | "hot_pink" | "cyan";
 export type SubtitlePosition = "bottom_center" | "center_screen" | "lower_center";
 export type AnimationMode = "sentence" | "word_by_word" | "karaoke";
+export type EntranceEffect = "pop_bounce" | "zoom_in" | "none";
 export type SpeechStyle = "polished" | "verbatim";
 export type SaveMode = "copy" | "overwrite";
 export type TranscriptionEngine = "gemini";
@@ -21,6 +22,7 @@ export interface SubtitleStyleConfig {
   backgroundBanner: boolean;
   fontFamily: string; // e.g. "Noto Sans Lao"
   animationMode: AnimationMode;
+  entranceEffect?: EntranceEffect;
 }
 
 export interface TranscriptionConfig {
@@ -74,6 +76,7 @@ export interface PipelineResult {
   outputPath?: string;
   subtitlesGenerated?: number;
   verification?: SavedDraftVerification;
+  srtContent?: string;
   error?: string;
 }
 
@@ -82,6 +85,23 @@ export interface SavedDraftVerification {
   textSegments: number;
   textMaterials: number;
   linkedTextSegments: number;
+}
+
+export interface ExtractedSubtitle {
+  index: number;
+  startSec: number;
+  endSec: number;
+  durationSec: number;
+  text: string;
+}
+
+export interface ExtractionResult {
+  ok: boolean;
+  count: number;
+  subtitles: ExtractedSubtitle[];
+  srtContent: string;
+  txtContent: string;
+  error?: string;
 }
 
 export interface ProjectValidationResult {

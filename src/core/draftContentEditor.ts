@@ -1,7 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
-import { PipelineConfig, SavedDraftVerification, SubtitlePosition } from "./types";
+import {
+  PipelineConfig,
+  SavedDraftVerification,
+  SubtitlePosition,
+  ExtractedSubtitle,
+  ExtractionResult,
+} from "./types";
 import {
   SubtitleCue,
   resolveFontSizePx,
@@ -98,8 +104,12 @@ function removeTextKeyframesForSegments(json: any, textTracks: any[]): void {
 
 function toRgbaHex(hex: string): string {
   if (!hex) return "#FFFFFFFF";
-  let clean = hex.replace("#", "");
-  if (clean.length === 6) clean += "FF";
+  let clean = hex.replace("#", "").trim();
+  if (clean.length === 3) {
+    clean = clean.split("").map((c) => c + c).join("") + "FF";
+  } else if (clean.length === 6) {
+    clean += "FF";
+  }
   return `#${clean.toUpperCase()}`;
 }
 
@@ -259,20 +269,20 @@ function strokeWidthToCapCut(strokeWidth: number): number {
  */
 function resolveTransform(position: SubtitlePosition): { x: number; y: number } {
   // CapCut normalized coords: y=0 is centre, negative=below, positive=above.
-  // TikTok / Shorts (9:16) have UI chrome (like, comment, share) in the
-  // bottom ~20 % of the screen (y ≈ −0.60 to −1.0).  The comfortable reading
-  // zone for short-form vertical video is roughly y −0.20 to −0.40.
+  // TikTok / Shorts / Reels (9:16) have UI chrome (like, comment, share, bookmark)
+  // on the right side (~15% width) and username/caption/audio banner in the bottom
+  // ~25% to 30% of the screen (y ≈ −0.50 to −1.0).
   switch (position) {
     case "center_screen":
-      // True centre — good for bold / impact-style captions
+      // True centre — 100% immune to all TikTok UI overlays
       return { x: 0.0, y: 0.0 };
     case "lower_center":
-      // Lower-third sweet-spot: easy to read, clears TikTok UI
-      return { x: 0.0, y: -0.30 };
+      // TikTok Golden Safe Zone: comfortably above username, caption & sound marquee
+      return { x: 0.0, y: -0.25 };
     case "bottom_center":
     default:
-      // Just above the TikTok danger-zone — as low as practical
-      return { x: 0.0, y: -0.50 };
+      // Lower Safe boundary: sits right above TikTok bottom caption & progress bar
+      return { x: 0.0, y: -0.38 };
   }
 }
 
@@ -492,10 +502,125 @@ export function verifySavedDraft(
   return verifyDraftHasVisibleSubtitles(json, expectedMinSegments);
 }
 
+export function formatSrtTimestamp(seconds: number): string {
+  const totalMs = Math.max(0, Math.round(seconds * 1000));
+  const hrs = Math.floor(totalMs / 3_600_000);
+  const mins = Math.floor((totalMs % 3_600_000) / 60_000);
+  const secs = Math.floor((totalMs % 60_000) / 1000);
+  const ms = totalMs % 1000;
+  return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+}
+
+export function cuesToSrt(cues: SubtitleCue[]): string {
+  let srt = "";
+  for (let i = 0; i < cues.length; i++) {
+    const cue = cues[i];
+    const text = cue.runs.map((r) => r.text).join("");
+    srt += `${i + 1}\n${formatSrtTimestamp(cue.startSec)} --> ${formatSrtTimestamp(cue.endSec)}\n${text}\n\n`;
+  }
+  return srt.trim();
+}
+
+/**
+ * Extracts all existing subtitles from a CapCut project folder.
+ * Reads draft_content.json, collects text tracks and their materials,
+ * sorts by timeline position, and generates both SRT and TXT formats.
+ */
+export function extractSubtitlesFromDraft(projectDir: string): ExtractionResult {
+  const draftPath = path.join(projectDir, "draft_content.json");
+  if (!fs.existsSync(draftPath)) {
+    return {
+      ok: false,
+      count: 0,
+      subtitles: [],
+      srtContent: "",
+      txtContent: "",
+      error: "draft_content.json not found in project directory.",
+    };
+  }
+
+  let json: any;
+  try {
+    json = JSON.parse(fs.readFileSync(draftPath, "utf8"));
+  } catch (e) {
+    return {
+      ok: false,
+      count: 0,
+      subtitles: [],
+      srtContent: "",
+      txtContent: "",
+      error: `Could not parse draft_content.json: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  const materialsMap = new Map<string, string>();
+  for (const m of json.materials?.texts ?? []) {
+    let text = "";
+    if (m.content) {
+      try {
+        const parsed = JSON.parse(m.content);
+        text = parsed.text || "";
+      } catch {
+        text = typeof m.content === "string" ? m.content : "";
+      }
+    }
+    if (!text && m.name) {
+      text = m.name;
+    }
+    materialsMap.set(m.id, text.trim());
+  }
+
+  const textTracks = (json.tracks ?? []).filter((t: any) => t.type === "text");
+  const rawSubtitles: { startSec: number; endSec: number; text: string }[] = [];
+
+  for (const track of textTracks) {
+    for (const seg of track.segments ?? []) {
+      if (seg.visible === false) continue;
+      const text = materialsMap.get(seg.material_id) || "";
+      if (!text) continue;
+
+      const startUs = seg.target_timerange?.start ?? 0;
+      const durUs = seg.target_timerange?.duration ?? 0;
+      const startSec = Number((startUs / 1_000_000).toFixed(3));
+      const durSec = Number((durUs / 1_000_000).toFixed(3));
+      const endSec = Number((startSec + durSec).toFixed(3));
+
+      rawSubtitles.push({ startSec, endSec, text });
+    }
+  }
+
+  rawSubtitles.sort((a, b) => a.startSec - b.startSec);
+
+  const subtitles: ExtractedSubtitle[] = rawSubtitles.map((sub, i) => ({
+    index: i + 1,
+    startSec: sub.startSec,
+    endSec: sub.endSec,
+    durationSec: Number((sub.endSec - sub.startSec).toFixed(3)),
+    text: sub.text,
+  }));
+
+  const srtContent = subtitles
+    .map((s) => `${s.index}\n${formatSrtTimestamp(s.startSec)} --> ${formatSrtTimestamp(s.endSec)}\n${s.text}\n`)
+    .join("\n");
+
+  const txtContent = subtitles
+    .map((s) => `[${formatSrtTimestamp(s.startSec)}] ${s.text}`)
+    .join("\n");
+
+  return {
+    ok: true,
+    count: subtitles.length,
+    subtitles,
+    srtContent,
+    txtContent,
+  };
+}
+
 export function insertLaoSubtitles(
   json: any,
   cues: SubtitleCue[],
-  config: PipelineConfig
+  config: PipelineConfig,
+  isTimelineAligned = true
 ): number {
   const style = config.subtitleStyle;
   json.materials.texts = json.materials.texts ?? [];
@@ -530,8 +655,12 @@ export function insertLaoSubtitles(
   let count = 0;
   for (const cue of cues) {
 
-    const startUs = mapMediaTimeToTimelineUs(cue.startSec, videoTracks);
-    const endUs = mapMediaTimeToTimelineUs(cue.endSec, videoTracks);
+    const startUs = isTimelineAligned
+      ? Math.round(cue.startSec * ALL_TIME_UNIT_US)
+      : mapMediaTimeToTimelineUs(cue.startSec, videoTracks);
+    const endUs = isTimelineAligned
+      ? Math.round(cue.endSec * ALL_TIME_UNIT_US)
+      : mapMediaTimeToTimelineUs(cue.endSec, videoTracks);
     const durationUs = Math.max(100_000, endUs - startUs);
     if (durationUs <= 0) continue;
 
@@ -574,17 +703,66 @@ export function insertLaoSubtitles(
     json.keyframes = json.keyframes ?? {};
     json.keyframes.texts = json.keyframes.texts ?? [];
 
+    const entranceEffect = style.entranceEffect || "pop_bounce";
     const keyframeId = randomUUID();
-    json.keyframes.texts.push({
-      id: keyframeId,
-      keyframe_list: [
+    let keyframeList: any[] = [];
+
+    if (entranceEffect === "pop_bounce") {
+      // Alex Hormozi / TikTok Pop-Bounce:
+      // Starts at 1.22 scale, bounces slightly below 1.0 (0.96) at ~90ms, settles at 1.0 at ~160ms
+      const popDurUs = Math.min(160_000, Math.floor(durationUs * 0.45));
+      const midOffset = Math.floor(popDurUs * 0.55);
+      keyframeList = [
+        {
+          id: randomUUID(),
+          property_type: "scale",
+          time_offset: 0,
+          values: [1.22, 1.22],
+        },
+        {
+          id: randomUUID(),
+          property_type: "scale",
+          time_offset: midOffset,
+          values: [0.96, 0.96],
+        },
+        {
+          id: randomUUID(),
+          property_type: "scale",
+          time_offset: popDurUs,
+          values: [1.0, 1.0],
+        },
+      ];
+    } else if (entranceEffect === "zoom_in") {
+      // Smooth punch-in zoom: 0.80 -> 1.0
+      const zoomDurUs = Math.min(140_000, Math.floor(durationUs * 0.35));
+      keyframeList = [
+        {
+          id: randomUUID(),
+          property_type: "scale",
+          time_offset: 0,
+          values: [0.80, 0.80],
+        },
+        {
+          id: randomUUID(),
+          property_type: "scale",
+          time_offset: zoomDurUs,
+          values: [1.0, 1.0],
+        },
+      ];
+    } else {
+      keyframeList = [
         {
           id: randomUUID(),
           property_type: "scale",
           time_offset: 0,
           values: [1.0, 1.0],
         },
-      ],
+      ];
+    }
+
+    json.keyframes.texts.push({
+      id: keyframeId,
+      keyframe_list: keyframeList,
       property_type: "scale",
     });
 
@@ -791,4 +969,37 @@ export function saveDraft(loaded: LoadedDraft, projectDir: string, saveMode: "co
   touchProjectFiles(projectDir, [outPath]);
 
   return outPath;
+}
+
+/**
+ * Re-applies an edited list of subtitle cues directly into draft_content.json
+ * without re-running transcription, allowing instant live updates from the UI.
+ */
+export function applySubtitlesToDraft(
+  projectDir: string,
+  subtitles: ExtractedSubtitle[],
+  config: PipelineConfig
+): { ok: boolean; outputPath?: string; subtitlesGenerated?: number; verification?: SavedDraftVerification; srtContent?: string; error?: string } {
+  try {
+    const draft = loadDraft(projectDir);
+    const cues: SubtitleCue[] = subtitles
+      .filter((s) => s.text && s.text.trim().length > 0)
+      .map((s) => ({
+        startSec: s.startSec,
+        endSec: s.endSec,
+        runs: [{ text: s.text.trim() }],
+      }));
+
+    if (cues.length === 0) {
+      return { ok: false, error: "ບໍ່ມີຂໍ້ຄວາມຊັບໄຕເຕີ້ນທີ່ຈະບັນທຶກ." };
+    }
+
+    const count = insertLaoSubtitles(draft.json, cues, config, true);
+    const outputPath = saveDraft(draft, projectDir, config.timeline.saveMode);
+    const verification = verifySavedDraft(outputPath, count);
+    const srtContent = cuesToSrt(cues);
+    return { ok: true, outputPath, subtitlesGenerated: count, verification, srtContent };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }

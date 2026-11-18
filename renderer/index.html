@@ -73,8 +73,10 @@
             <input id="projectDir" type="text" readonly placeholder="ກົດ ເລືອກ... ເພື່ອເລືອກໂຟນເດີໂຄງການ…" class="input flex-1 font-mono text-sm text-muted" />
             <button id="browseDir" type="button" class="btn-secondary text-sm whitespace-nowrap">ເລືອກ…</button>
             <button id="checkProjectBtn" type="button" class="btn-secondary text-sm whitespace-nowrap">ກວດໂຄງການ</button>
+            <button id="extractSubtitlesBtn" type="button" class="btn-secondary text-sm whitespace-nowrap flex items-center gap-1.5"><span class="text-gold">📥</span><span>ດຶງຊັບ / Export SRT</span></button>
           </div>
           <div id="projectCheckResult" class="status-card hidden mt-3"></div>
+          <div id="extractedSubtitlesPanel" class="status-card hidden mt-3"></div>
         </div>
       </div>
     </section>
@@ -102,17 +104,19 @@
           <div>
             <label class="field-label">ສີໂຕໜັງສື</label>
             <select id="textColor" class="input text-sm">
-              <option value="white" selected>ຂາວ</option>
-              <option value="yellow">ເຫຼືອງ</option>
-              <option value="neon_green">ຂຽວເນອອນ</option>
+              <option value="white" selected>ຂາວ (White)</option>
+              <option value="yellow">ເຫຼືອງ (Yellow Gold)</option>
+              <option value="neon_green">ຂຽວເນອອນ (Neon Green)</option>
+              <option value="hot_pink">ບົວເຂັ້ມ (Hot Pink)</option>
+              <option value="cyan">ຟ້າສະຫວ່າງ (Electric Cyan)</option>
             </select>
           </div>
           <div>
-            <label class="field-label">ຕຳແໜ່ງ</label>
+            <label class="field-label">ຕຳແໜ່ງ (Safe Zone)</label>
             <select id="position" class="input text-sm">
-              <option value="lower_center" selected>ທາງລຸ່ມກາງ (Lower Center)</option>
-              <option value="bottom_center">ລຸ່ມສຸດ (Bottom Center)</option>
-              <option value="center_screen">ກາງໜ້າຈໍ (Center Screen)</option>
+              <option value="lower_center" selected>ທາງລຸ່ມກາງ (TikTok Golden Safe Zone: ແນະນຳ)</option>
+              <option value="bottom_center">ລຸ່ມພໍດີ (Lower Safe Boundary: ເໜືອແຖບຊື່ບັນຊີ)</option>
+              <option value="center_screen">ກາງໜ້າຈໍ (Center Screen: ປອດໄພ 100%)</option>
             </select>
           </div>
         </div>
@@ -147,13 +151,54 @@
           </div>
         </div>
         <div class="mt-4 pt-4 border-t border-border">
-          <label class="field-label mb-2 flex items-center justify-between">
-            <span>ຕົວຢ່າງຊັບໄຕເຕີ້ນ (Live Subtitle Preview)</span>
-            <span class="text-xs text-muted font-normal">ສະແດງຕົວຢ່າງຮູບແບບໂຕໜັງສືໃນໜ້າຈໍ</span>
-          </label>
-          <div class="preview-screen">
-            <div id="subtitlePreviewText" class="preview-text-box">
-              ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <label class="field-label mb-0">ຕົວຢ່າງຊັບໄຕເຕີ້ນ &amp; ຂອບເຂດປອດໄພ TikTok 9:16 (Live Safe Zone Preview)</label>
+              <span class="text-xs text-muted">ກວດສອບວ່າຊັບໄຕເຕີ້ນບໍ່ຖືກປຸ່ມ Like/Share ຫຼື ຊື່ບັນຊີ TikTok ບັງ</span>
+            </div>
+            <label class="inline-flex items-center gap-2 text-xs text-gold cursor-pointer select-none">
+              <input id="tiktokSafeZoneToggle" type="checkbox" class="checkbox" checked />
+              <span>ສະແດງຂອບ UI TikTok (Safe Zone Guide)</span>
+            </label>
+          </div>
+          <div class="preview-screen" id="previewContainer">
+            <div class="tiktok-mockup-frame" id="tiktokMockup">
+              <!-- Top bar header -->
+              <div class="tiktok-header">
+                <span>Following</span>
+                <span class="tiktok-header-active">For You</span>
+              </div>
+              
+              <!-- Center Subtitle Display Box (moves dynamically based on position) -->
+              <div class="tiktok-stage" id="tiktokStage">
+                <div class="tiktok-safe-border" id="tiktokSafeBorder"></div>
+                <div id="subtitlePreviewText" class="preview-text-box">
+                  ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler
+                </div>
+              </div>
+
+              <!-- Right action icons -->
+              <div class="tiktok-actions">
+                <div class="tiktok-action-item"><span class="tiktok-icon">👤</span></div>
+                <div class="tiktok-action-item"><span class="tiktok-icon">❤️</span><span class="tiktok-label">88.5K</span></div>
+                <div class="tiktok-action-item"><span class="tiktok-icon">💬</span><span class="tiktok-label">1.2K</span></div>
+                <div class="tiktok-action-item"><span class="tiktok-icon">🔖</span><span class="tiktok-label">4.5K</span></div>
+                <div class="tiktok-action-item"><span class="tiktok-icon">↗️</span><span class="tiktok-label">Share</span></div>
+              </div>
+
+              <!-- Bottom caption & audio -->
+              <div class="tiktok-footer">
+                <div class="tiktok-user">@creator_lao · ວິດີໂອນີ້ສ້າງດ້ວຍ AI #tiktoklao</div>
+                <div class="tiktok-music">🎵 Original sound - Creator Lao</div>
+              </div>
+            </div>
+            
+            <div class="safe-zone-legend hidden md:flex">
+              <div class="legend-badge is-safe">🟢 ຂອບເຂດປອດໄພ (Safe Zone)</div>
+              <div class="legend-badge is-danger">🔴 Danger Zone: ປຸ່ມ Like/Share/ຊື່ບັນຊີ</div>
+              <p class="text-xs text-muted max-w-xs mt-2 leading-relaxed">
+                ລະບົບໄດ້ປັບຕຳແໜ່ງໃຫ້ຢູ່ເໜືອແຖບຄຳອະທິບາຍ ແລະ ຫ່າງຈາກປຸ່ມ Action ດ້ານຂວາໂດຍອັດຕະໂນມັດ ພ້ອມຈຳກັດຄວາມຍາວແຖວບໍ່ເກີນ 22 ຕົວອັກສອນ ຮັບປະກັນບໍ່ບັງເນື້ອຫາແນ່ນອນ.
+              </p>
             </div>
           </div>
         </div>
@@ -168,19 +213,45 @@
         <h2>ເອນິເມຊັນ &amp; ເລເອົາຕ໌ຊັບໄຕເຕີ້ນ</h2>
         <p>ຮູບແບບການສະແດງ ແລະ ການເຄື່ອນໄຫວຂອງຊັບໄຕເຕີ້ນໃຫ້ກົງກັບສຽງເວົ້າ.</p>
       </div>
-      <div class="panel-body grid grid-cols-3 gap-4" id="animationModeGroup">
-        <button type="button" data-mode="sentence" class="mode-card">
-          <span class="mode-card-title">ແບບທັງປະໂຫຍດ</span>
-          <span class="mode-card-desc">ສະແດງປະໂຫຍດເຕັມແບບດັ້ງເດີມ</span>
-        </button>
-        <button type="button" data-mode="word_by_word" class="mode-card is-selected">
-          <span class="mode-card-title">ແບບທີລະຄຳ</span>
-          <span class="mode-card-desc">ໂຕໜັງສືເຄື່ອນໄຫວຕາມທີລະຄຳເວົ້າ</span>
-        </button>
-        <button type="button" data-mode="karaoke" class="mode-card">
-          <span class="mode-card-title">Karaoke Highlight</span>
-          <span class="mode-card-desc">ສີໂຕໜັງສືໄຫຼໄປຕາມຈັງຫວະທີ່ເວົ້າ</span>
-        </button>
+      <div class="panel-body grid gap-5">
+        <div>
+          <label class="field-label mb-2">ຮູບແບບການແບ່ງຂໍ້ຄວາມ (Subtitle Display Mode)</label>
+          <div class="grid grid-cols-3 gap-4" id="animationModeGroup">
+            <button type="button" data-mode="sentence" class="mode-card">
+              <span class="mode-card-title">ແບບທັງປະໂຫຍດ</span>
+              <span class="mode-card-desc">ສະແດງປະໂຫຍດເຕັມແບບດັ້ງເດີມ</span>
+            </button>
+            <button type="button" data-mode="word_by_word" class="mode-card is-selected">
+              <span class="mode-card-title">ແບບທີລະຄຳ</span>
+              <span class="mode-card-desc">ໂຕໜັງສືເຄື່ອນໄຫວຕາມທີລະຄຳເວົ້າ</span>
+            </button>
+            <button type="button" data-mode="karaoke" class="mode-card">
+              <span class="mode-card-title">Karaoke Highlight</span>
+              <span class="mode-card-desc">ສີໂຕໜັງສືໄຫຼໄປຕາມຈັງຫວະທີ່ເວົ້າ</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="border-t border-border pt-4">
+          <label class="field-label mb-2 flex items-center justify-between">
+            <span>ລູກຫຼິ້ນການເຄື່ອນໄຫວ (Entrance Motion Effect)</span>
+            <span class="text-xs text-muted font-normal">ເອັບເຟັກເດັ້ງ / ຊູມໂຕໜັງສືໃນ CapCut</span>
+          </label>
+          <div class="grid grid-cols-3 gap-4" id="entranceEffectGroup">
+            <button type="button" data-effect="pop_bounce" class="mode-card is-selected">
+              <span class="mode-card-title flex items-center gap-1.5"><span class="text-gold">💥</span><span>Pop &amp; Bounce</span></span>
+              <span class="mode-card-desc">ເດັ້ງກະໂດດສະດຸດຕາ (TikTok / Reels)</span>
+            </button>
+            <button type="button" data-effect="zoom_in" class="mode-card">
+              <span class="mode-card-title flex items-center gap-1.5"><span class="text-teal">🔍</span><span>Punch Zoom</span></span>
+              <span class="mode-card-desc">ຊູມເຂົ້າໄວ ດຶງດູດສາຍຕາ</span>
+            </button>
+            <button type="button" data-effect="none" class="mode-card">
+              <span class="mode-card-title flex items-center gap-1.5"><span>⏸️</span><span>Static / Classic</span></span>
+              <span class="mode-card-desc">ສະແດງປົກກະຕິແບບດັ້ງເດີມ</span>
+            </button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -224,11 +295,38 @@
     </section>
 
     <section id="runSummaryPanel" class="panel hidden">
-      <div class="panel-head">
-        <h2>ຜົນການຂຽນເຂົ້າໂຄງການ</h2>
-        <p>ສະຫຼຸບຈຳນວນ track, segment, ແລະ material ທີ່ກວດພົບຫຼັງບັນທຶກ.</p>
+      <div class="panel-head flex items-center justify-between">
+        <div>
+          <h2>ຜົນການຂຽນເຂົ້າໂຄງການ</h2>
+          <p>ສະຫຼຸບຈຳນວນ track, segment, ແລະ material ທີ່ກວດພົບຫຼັງບັນທຶກ.</p>
+        </div>
+        <button id="exportGeneratedSrtBtn" type="button" class="btn-secondary text-xs flex items-center gap-1.5"><span class="text-gold">💾</span><span>ສົ່ງອອກໄຟລ໌ .SRT</span></button>
       </div>
       <div id="runSummaryBody" class="panel-body"></div>
+    </section>
+
+    <!-- ===================== 5. INTERACTIVE SUBTITLE REVIEW & EDITOR ===================== -->
+    <section id="interactiveEditorPanel" class="panel hidden">
+      <div class="panel-head flex items-center justify-between">
+        <div>
+          <h2>ກວດສອບ &amp; ແກ້ໄຂຂໍ້ຄວາມຊັບໄຕເຕີ້ນ (Interactive Subtitle Editor)</h2>
+          <p>ຄລິກແກ້ໄຂຄຳຜິດ, ປັບປ່ຽນຂໍ້ຄວາມ ຫຼື ກົດເບິ່ງ Live Preview ໄດ້ທັນທີ</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="editorSubCount" class="text-xs text-muted"></span>
+          <button id="applyEditorChangesBtn" type="button" class="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-none">
+            <span>⚡</span>
+            <span>ບັນທຶກລົງ CapCut ຄືນໃໝ່</span>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="text-xs text-muted mb-2 flex items-center justify-between">
+          <span>ລາຍການຊັບໄຕເຕີ້ນເທິງໄທມ໌ໄລນ໌ (ຄລິກເພື່ອແກ້ໄຂຄຳສັບໄດ້ເລີຍ)</span>
+          <span class="text-gold text-xs">✨ ປັບປ່ຽນແບບ Real-time ບໍ່ຕ້ອງລໍຖ້າ AI ຖອດໃໝ່</span>
+        </div>
+        <div id="editorSubList" class="editor-sub-list"></div>
+      </div>
     </section>
 
   </main>

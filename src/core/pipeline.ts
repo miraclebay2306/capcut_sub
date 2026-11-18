@@ -4,6 +4,7 @@ import {
   extractAudioForTranscription,
   extractTimelineAudio,
   tempWavPathFor,
+  compressAudioForGemini,
   TimelineAudioSegment,
 } from "./ffmpegSilence";
 import { transcribeLao } from "./transcribe";
@@ -13,6 +14,7 @@ import {
   insertLaoSubtitles,
   saveDraft,
   verifySavedDraft,
+  cuesToSrt,
 } from "./draftContentEditor";
 import {
   PipelineConfig,
@@ -36,7 +38,10 @@ function parseTimelineSegments(projectDir: string): {
   const totalDurationSec = (draft.duration ?? 0) / 1_000_000;
   const segments: TimelineAudioSegment[] = [];
 
-  const videoTracks = (draft.tracks ?? []).filter((t: any) => t.type === "video");
+  // Inspect both video and audio tracks to capture all dialogue / voiceovers
+  const mediaTracks = (draft.tracks ?? []).filter(
+    (t: any) => t.type === "video" || t.type === "audio"
+  );
 
   const videosMap = new Map<string, string>();
   for (const v of draft.materials?.videos ?? []) {
@@ -48,9 +53,10 @@ function parseTimelineSegments(projectDir: string): {
     if (p) videosMap.set(a.id, p);
   }
 
-  for (const track of videoTracks) {
+  for (const track of mediaTracks) {
     for (const seg of track.segments ?? []) {
       if (seg.visible === false) continue;
+      if (seg.volume === 0) continue; // Skip muted segments
 
       const rawPath = videosMap.get(seg.material_id);
       if (!rawPath) continue;
@@ -200,12 +206,6 @@ function closeCapCutPC(): void {
       execSync(`taskkill /F /IM "${exe}" /T`, { stdio: "ignore" });
     } catch {}
   }
-  try {
-    execSync(
-      `powershell -NoProfile -Command "Get-Process | Where-Object { $_.Name -like '*CapCut*' -or $_.Name -like '*Jianying*' } | Stop-Process -Force"`,
-      { stdio: "ignore" }
-    );
-  } catch {}
 }
 
 export function validateProjectDirectory(projectDir: string): ProjectValidationResult {
@@ -317,6 +317,7 @@ export async function runPipeline(
   onProgress: (p: PipelineProgress) => void,
 ): Promise<PipelineResult> {
   let tempWav: string | null = null;
+  let tempMp3: string | null = null;
   try {
     closeCapCutPC();
     await delay(300);
@@ -354,6 +355,16 @@ export async function runPipeline(
       await extractAudioForTranscription(sourceMedia, tempWav);
     }
 
+    // If audio is large, compress to 64kbps MP3 to keep upload payload lightweight
+    let audioToTranscribe = tempWav;
+    try {
+      const stats = fs.statSync(tempWav);
+      if (stats.size > 8 * 1024 * 1024) {
+        tempMp3 = path.join(require("os").tmpdir(), `capcut-lao-${Date.now()}.mp3`);
+        audioToTranscribe = await compressAudioForGemini(tempWav, tempMp3);
+      }
+    } catch {}
+
     onProgress({
       stage: "transcribing",
       message: "ກຳລັງຖອດຂໍ້ຄວາມ...",
@@ -361,7 +372,7 @@ export async function runPipeline(
     });
     const { sentences } = await transcribeLao(
       config.apiKey,
-      tempWav,
+      audioToTranscribe,
       config.transcription,
       (statusMsg) => {
         onProgress({ stage: "transcribing", message: statusMsg, percent: 35 });
@@ -384,7 +395,12 @@ export async function runPipeline(
     if (!cues || cues.length === 0) {
       throw new Error("ບໍ່ສາມາດສ້າງซັບໄຕເຕີ້ນໄດ້ (ไม่สามารถสร้างข้อความซับไตเติ้ลได้)");
     }
-    const subtitlesGenerated = insertLaoSubtitles(draft.json, cues, config);
+    const subtitlesGenerated = insertLaoSubtitles(
+      draft.json,
+      cues,
+      config,
+      timelineWavCreated
+    );
     if (subtitlesGenerated <= 0) {
       throw new Error("ບໍ່ມີ subtitle segment ຖືກຂຽນເຂົ້າ draft_content.json (ไม่มี segment ซับถูกเขียนลงโปรเจกต์)");
     }
@@ -402,16 +418,20 @@ export async function runPipeline(
       config.timeline.saveMode,
     );
     const verification = verifySavedDraft(outputPath, subtitlesGenerated);
+    const srtContent = cuesToSrt(cues);
 
     onProgress({ stage: "done", message: "ສຳເລັດແລ້ວ.", percent: 100 });
-    return { ok: true, outputPath, subtitlesGenerated, verification };
+    return { ok: true, outputPath, subtitlesGenerated, verification, srtContent };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     onProgress({ stage: "error", message, percent: 0 });
     return { ok: false, error: message };
   } finally {
     if (tempWav && fs.existsSync(tempWav)) {
-      fs.unlinkSync(tempWav);
+      try { fs.unlinkSync(tempWav); } catch {}
+    }
+    if (tempMp3 && fs.existsSync(tempMp3)) {
+      try { fs.unlinkSync(tempMp3); } catch {}
     }
   }
 }
