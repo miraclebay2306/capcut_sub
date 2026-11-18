@@ -8,6 +8,7 @@ import {
   getRecentCapCutProjects,
   restoreProjectBackup,
 } from "../src/core/draftContentEditor";
+import { queryAvailableGeminiModels } from "../src/core/geminiTranscribe";
 import { PipelineConfig, PipelineProgress } from "../src/core/types";
 
 let mainWindow: BrowserWindow | null = null;
@@ -88,6 +89,10 @@ ipcMain.handle("load-api-key", async () => {
 ipcMain.handle("clear-api-key", async () => {
   if (fs.existsSync(keyStorePath())) fs.unlinkSync(keyStorePath());
   return true;
+});
+
+ipcMain.handle("query-available-gemini-models", async (_event, apiKey: string) => {
+  return queryAvailableGeminiModels(apiKey);
 });
 
 // ---------------------------------------------------------------------------

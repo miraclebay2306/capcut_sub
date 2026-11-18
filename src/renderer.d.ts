@@ -14,6 +14,7 @@ export interface CapcutLaoBridge {
   saveApiKey(apiKey: string): Promise<boolean>;
   loadApiKey(): Promise<string | null>;
   clearApiKey(): Promise<boolean>;
+  queryAvailableGeminiModels(apiKey: string): Promise<string[]>;
   runPipeline(config: PipelineConfig): Promise<PipelineResult>;
   validateProject(projectDir: string): Promise<ProjectValidationResult>;
   extractSubtitles(projectDir: string): Promise<ExtractionResult>;

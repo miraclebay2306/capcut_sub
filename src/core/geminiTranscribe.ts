@@ -109,6 +109,22 @@ function extractJsonText(text: string): string {
   return cleaned;
 }
 
+export async function queryAvailableGeminiModels(apiKey: string): Promise<string[]> {
+  if (!apiKey) return [];
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (res.ok) {
+      const data: any = await res.json();
+      if (Array.isArray(data.models)) {
+        return data.models
+          .filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
+          .map((m: any) => m.name.replace("models/", ""));
+      }
+    }
+  } catch {}
+  return [];
+}
+
 export async function transcribeWithGemini(
   apiKey: string,
   audioPath: string,
@@ -124,15 +140,40 @@ export async function transcribeWithGemini(
   const audioBase64 = audioBytes.toString("base64");
   const prompt = buildPrompt(config);
 
-  const primaryModel = config.model || "gemini-2.5-flash";
-  const fallbacks = [
+  const primaryModel = config.model || "gemini-3.5-flash-lite";
+
+  // Check models supported in real-time by the user's specific API key
+  const dynamicModels = await queryAvailableGeminiModels(apiKey);
+
+  const defaultFallbacks = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.0-flash",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
     "gemini-1.5-pro",
-    "gemini-2.5-flash-lite",
-  ].filter((m) => m !== primaryModel);
-  const modelsToTry = [primaryModel, ...fallbacks];
+  ];
+
+  const pool = dynamicModels.length > 0 ? dynamicModels : defaultFallbacks;
+
+  const modelsToTry: string[] = [];
+  if (primaryModel && pool.includes(primaryModel)) {
+    modelsToTry.push(primaryModel);
+  } else if (primaryModel) {
+    // If not sure, still give primaryModel a try first
+    modelsToTry.push(primaryModel);
+  }
+
+  for (const m of pool) {
+    if (!modelsToTry.includes(m) && (m.includes("flash") || m.includes("pro"))) {
+      modelsToTry.push(m);
+    }
+  }
+
+  if (modelsToTry.length === 0) {
+    modelsToTry.push(...defaultFallbacks);
+  }
 
   let lastError: Error | null = null;
 

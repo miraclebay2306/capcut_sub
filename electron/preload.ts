@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("capcutLao", {
   saveApiKey: (apiKey: string): Promise<boolean> => ipcRenderer.invoke("save-api-key", apiKey),
   loadApiKey: (): Promise<string | null> => ipcRenderer.invoke("load-api-key"),
   clearApiKey: (): Promise<boolean> => ipcRenderer.invoke("clear-api-key"),
+  queryAvailableGeminiModels: (apiKey: string): Promise<string[]> =>
+    ipcRenderer.invoke("query-available-gemini-models", apiKey),
 
   runPipeline: (config: PipelineConfig): Promise<PipelineResult> =>
     ipcRenderer.invoke("run-pipeline", config),

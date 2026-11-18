@@ -1027,31 +1027,78 @@ export function applySubtitlesToDraft(
 }
 
 /**
- * Scans standard CapCut and Jianying directories to locate the most recent projects.
+ * Scans standard CapCut and Jianying directories, reading root_meta_info.json
+ * to locate all projects (including custom draft save locations across drives).
  */
 export function getRecentCapCutProjects(): RecentProject[] {
   const localAppData = process.env.LOCALAPPDATA || "";
-  const candidateDirs = [
+  const metaDirs = [
     path.join(localAppData, "CapCut", "User Data", "Projects", "com.lveditor.draft"),
     path.join(localAppData, "JianyingPro", "User Data", "Projects", "com.lveditor.draft"),
   ];
 
   const results: RecentProject[] = [];
+  const visitedPaths = new Set<string>();
 
-  for (const root of candidateDirs) {
+  // 1. Parse root_meta_info.json from CapCut / Jianying metadata
+  for (const metaDir of metaDirs) {
+    const metaFile = path.join(metaDir, "root_meta_info.json");
+    if (fs.existsSync(metaFile)) {
+      try {
+        const raw = fs.readFileSync(metaFile, "utf8");
+        const meta = JSON.parse(raw);
+        const store = Array.isArray(meta.all_draft_store) ? meta.all_draft_store : [];
+        for (const item of store) {
+          const folder = item.draft_fold_path || (item.draft_root_path && item.draft_name ? path.join(item.draft_root_path, item.draft_name) : null);
+          if (!folder) continue;
+          const normalized = path.resolve(folder);
+          if (visitedPaths.has(normalized.toLowerCase())) continue;
+
+          const draftPath = path.join(normalized, "draft_content.json");
+          if (fs.existsSync(draftPath)) {
+            let mtimeMs = 0;
+            if (typeof item.tm_draft_modified === "number") {
+              // CapCut stores microseconds
+              mtimeMs = item.tm_draft_modified > 1e12 ? Math.floor(item.tm_draft_modified / 1000) : item.tm_draft_modified;
+            } else {
+              try {
+                mtimeMs = fs.statSync(draftPath).mtimeMs;
+              } catch {}
+            }
+
+            visitedPaths.add(normalized.toLowerCase());
+            results.push({
+              name: item.draft_name || path.basename(normalized),
+              path: normalized,
+              modifiedMs: mtimeMs,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Could not read root_meta_info.json:", err);
+      }
+    }
+  }
+
+  // 2. Also scan direct subdirectories in metaDirs as fallback
+  for (const root of metaDirs) {
     if (!fs.existsSync(root)) continue;
     try {
       const entries = fs.readdirSync(root, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const projectDir = path.join(root, entry.name);
-        const draftPath = path.join(projectDir, "draft_content.json");
+        const normalized = path.resolve(projectDir);
+        if (visitedPaths.has(normalized.toLowerCase())) continue;
+
+        const draftPath = path.join(normalized, "draft_content.json");
         if (fs.existsSync(draftPath)) {
           try {
             const stat = fs.statSync(draftPath);
+            visitedPaths.add(normalized.toLowerCase());
             results.push({
               name: entry.name,
-              path: projectDir,
+              path: normalized,
               modifiedMs: stat.mtimeMs,
             });
           } catch {}
@@ -1061,7 +1108,7 @@ export function getRecentCapCutProjects(): RecentProject[] {
   }
 
   results.sort((a, b) => b.modifiedMs - a.modifiedMs);
-  return results.slice(0, 10);
+  return results.slice(0, 15);
 }
 
 /**

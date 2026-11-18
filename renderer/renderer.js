@@ -127,7 +127,7 @@ function saveUserSettings() {
       selectedAnimationMode: selectedAnimationMode || "word_by_word",
       selectedEntranceEffect: selectedEntranceEffect || "pop_bounce",
       transcriptionEngine: document.getElementById("transcriptionEngine")?.value || "gemini",
-      transcriptionModel: document.getElementById("transcriptionModel")?.value || "gemini-2.5-flash",
+      transcriptionModel: document.getElementById("transcriptionModel")?.value || "gemini-3.5-flash-lite",
       bilingualMode: document.getElementById("bilingualMode")?.value || "off",
       speechStyle: speechStyleEl ? speechStyleEl.value : "verbatim",
       glossary: document.getElementById("glossary")?.value || "",
@@ -310,6 +310,8 @@ async function loadRecentProjects() {
   }
 }
 
+recentProjectsSelect?.addEventListener("focus", loadRecentProjects);
+
 recentProjectsSelect?.addEventListener("change", async () => {
   if (recentProjectsSelect.value) {
     projectDirInput.value = recentProjectsSelect.value;
@@ -362,13 +364,55 @@ let lastGeneratedSrt = "";
 
 const modelOptionsByEngine = {
   gemini: [
-    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (ແນະນຳ - ໄວ, ແມ້ນຢຳ, ໂຄຕ້າໃຫຍ່)" },
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (ມາດຕະຖານ ລຸ້ນໃໝ່)" },
-    { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash (ລຸ້ນສຳຮອງ ສະຖຽນສູງ)" },
-    { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro (ຄຸນນະພາບສູງສຸດ ສຳລັບສຽງຍາກ)" },
-    { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite (ໂຄຕ້າຫວ່າງ)" },
+    { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite (ແນະນຳ - ໄວ, ໂຄຕ້າໃຫຍ່, ລຸ້ນໃໝ່)" },
+    { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash (ຄຸນນະພາບສູງ ລຸ້ນໃໝ່)" },
+    { value: "gemini-3.0-flash", label: "Gemini 3.0 Flash" },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+    { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+    { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
   ],
 };
+
+async function refreshDynamicModels(apiKey) {
+  if (!apiKey || !window.capcutLao?.queryAvailableGeminiModels) return;
+  try {
+    const liveModels = await window.capcutLao.queryAvailableGeminiModels(apiKey);
+    if (liveModels && liveModels.length > 0) {
+      const currentVal = transcriptionModelSelect.value;
+      transcriptionModelSelect.innerHTML = "";
+      
+      // Sort flash models to top
+      const sorted = [...liveModels].sort((a, b) => {
+        const aFlash = a.includes("flash") ? 1 : 0;
+        const bFlash = b.includes("flash") ? 1 : 0;
+        return bFlash - aFlash;
+      });
+
+      for (const m of sorted) {
+        const opt = document.createElement("option");
+        opt.value = m;
+        let badge = "";
+        if (m === "gemini-3.5-flash-lite") badge = " (ແນະນຳ - ໂຄຕ້າໃຫຍ່)";
+        else if (m.includes("flash")) badge = " (ໄວ/Flash)";
+        else if (m.includes("pro")) badge = " (ຄຸນນະພາບສູງ)";
+        opt.textContent = `${m}${badge}`;
+        transcriptionModelSelect.appendChild(opt);
+      }
+
+      if (sorted.includes(currentVal)) {
+        transcriptionModelSelect.value = currentVal;
+      } else if (sorted.includes("gemini-3.5-flash-lite")) {
+        transcriptionModelSelect.value = "gemini-3.5-flash-lite";
+      } else if (sorted.length > 0) {
+        transcriptionModelSelect.value = sorted[0];
+      }
+      saveUserSettings();
+    }
+  } catch (e) {
+    console.warn("Could not query dynamic models:", e);
+  }
+}
 
 function updateTranscriptionModelOptions() {
   if (!transcriptionEngineSelect || !transcriptionModelSelect) return;
@@ -394,12 +438,16 @@ window.capcutLao.loadApiKey().then((key) => {
   if (key) {
     apiKeyInput.value = key;
     rememberKeyCheckbox.checked = true;
+    refreshDynamicModels(key);
   }
 });
 
 apiKeyInput.addEventListener("change", async () => {
-  if (rememberKeyCheckbox.checked && apiKeyInput.value) {
-    await window.capcutLao.saveApiKey(apiKeyInput.value);
+  if (apiKeyInput.value) {
+    if (rememberKeyCheckbox.checked) {
+      await window.capcutLao.saveApiKey(apiKeyInput.value);
+    }
+    refreshDynamicModels(apiKeyInput.value.trim());
   }
 });
 
