@@ -5,6 +5,8 @@ import {
   ProjectValidationResult,
   ExtractionResult,
   ExtractedSubtitle,
+  RecentProject,
+  BackupRestoreResult,
 } from "./core/types";
 
 export interface CapcutLaoBridge {
@@ -15,6 +17,8 @@ export interface CapcutLaoBridge {
   runPipeline(config: PipelineConfig): Promise<PipelineResult>;
   validateProject(projectDir: string): Promise<ProjectValidationResult>;
   extractSubtitles(projectDir: string): Promise<ExtractionResult>;
+  getRecentProjects(): Promise<RecentProject[]>;
+  restoreProjectBackup(projectDir: string): Promise<BackupRestoreResult>;
   applyEditedSubtitles(
     projectDir: string,
     subtitles: ExtractedSubtitle[],

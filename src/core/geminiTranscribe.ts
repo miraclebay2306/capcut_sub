@@ -13,6 +13,15 @@ function buildPrompt(config: TranscriptionConfig): string {
       ? "Produce a clean transcription in Lao script (ອັກສອນລາວ). Omit vocal hesitations (like um, uh, er, ເອີ, ອ່ະ), but transcribe every spoken sentence completely without skipping any words or phrases."
       : "Produce a strictly verbatim transcription in Lao script (ອັກສອນລາວ). Capture every spoken word accurately.";
 
+  let bilingualInstruction = "";
+  if (config.bilingualMode === "lao_thai") {
+    bilingualInstruction =
+      "BILINGUAL SUBTITLE REQUIREMENT: For every sentence's 'text' field, output TWO lines: Line 1 in Lao script (ອັກສອນລາວ), followed by a newline (\\n), followed by Line 2 in Thai script (ภาษาไทย) natural translation. Example: 'ສະບາຍດີທຸກຄົນ\\nสวัสดีทุกคน'. In 'words', keep the Lao words and acoustic timestamps.";
+  } else if (config.bilingualMode === "lao_english") {
+    bilingualInstruction =
+      "BILINGUAL SUBTITLE REQUIREMENT: For every sentence's 'text' field, output TWO lines: Line 1 in Lao script (ອັກສອນລາວ), followed by a newline (\\n), followed by Line 2 in English translation. Example: 'ສະບາຍດີທຸກຄົນ\\nHello everyone'. In 'words', keep the Lao words and acoustic timestamps.";
+  }
+
   const glossaryBlock = config.glossary.trim()
     ? `The following proper nouns, brand names, and technical terms may appear in the audio. Use these exact spellings/casings whenever they occur:\n${config.glossary.trim()}`
     : "";
@@ -26,6 +35,7 @@ function buildPrompt(config: TranscriptionConfig): string {
     "3. Each word's endSec MUST be the exact acoustic offset (the exact millisecond the speaker finishes saying that specific word in audio).",
     "4. Ensure word timestamps strictly progress chronologically: startSec < endSec for every word without overlapping or skipping.",
     styleInstruction,
+    bilingualInstruction,
     glossaryBlock,
     "",
     "Return ONLY valid JSON (no markdown fences, no commentary) matching this exact shape:",
@@ -160,7 +170,17 @@ export async function transcribeWithGemini(
         }
 
         for (const s of parsed.sentences) {
-          if (s.text) s.text = cleanLaoText(s.text);
+          if (s.text) {
+            if (config.bilingualMode && config.bilingualMode !== "off") {
+              const lines = s.text.split("\n");
+              s.text = lines
+                .map((line: string, idx: number) => (idx === 0 ? cleanLaoText(line) : line.trim()))
+                .filter(Boolean)
+                .join("\n");
+            } else {
+              s.text = cleanLaoText(s.text);
+            }
+          }
           if (Array.isArray(s.words)) {
             for (const w of s.words) {
               if (w.word) w.word = cleanLaoText(w.word);

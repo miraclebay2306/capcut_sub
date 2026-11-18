@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld("capcutLao", {
   validateProject: (projectDir: string): Promise<ProjectValidationResult> =>
     ipcRenderer.invoke("validate-project", projectDir),
 
+  getRecentProjects: () =>
+    ipcRenderer.invoke("get-recent-projects"),
+
+  restoreProjectBackup: (projectDir: string) =>
+    ipcRenderer.invoke("restore-project-backup", projectDir),
+
   extractSubtitles: (projectDir: string) =>
     ipcRenderer.invoke("extract-subtitles", projectDir),
 

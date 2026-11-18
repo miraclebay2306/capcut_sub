@@ -59,13 +59,28 @@ function updateSubtitlePreview() {
   previewEl.style.background = banner ? "rgba(0, 0, 0, 0.75)" : "transparent";
   previewEl.style.boxShadow = banner ? "0 2px 8px rgba(0,0,0,0.5)" : "none";
 
+  const autoAccent = document.getElementById("autoAccentKeywords")?.checked;
+  const accentHex = colorKey === "yellow" ? "#39FF14" : "#F2C641";
+  const bilingual = document.getElementById("bilingualMode")?.value || "off";
+
+  let bilingualSuffix = "";
+  if (bilingual === "lao_thai") {
+    bilingualSuffix = "<br><span style='font-size:0.82em;opacity:0.88'>ยินดีต้อนรับสู่โปรแกรม</span>";
+  } else if (bilingual === "lao_english") {
+    bilingualSuffix = "<br><span style='font-size:0.82em;opacity:0.88'>Welcome to CapCut Subtitler</span>";
+  }
+
   if (selectedAnimationMode === "word_by_word") {
-    previewEl.innerHTML = `<span>ມື້ນີ້ເຮົາຈະເຮັດ 3 ຢ່າງ</span>`;
+    previewEl.innerHTML = autoAccent
+      ? `<span>ມື້ນີ້ເຮົາຈະເຮັດ <span style="color:${accentHex}">3</span> ຢ່າງ</span>${bilingualSuffix}`
+      : `<span>ມື້ນີ້ເຮົາຈະເຮັດ 3 ຢ່າງ</span>${bilingualSuffix}`;
   } else if (selectedAnimationMode === "karaoke") {
     const highlight = colorKey === "white" ? "#F2C641" : textColors[colorKey] || "#F2C641";
-    previewEl.innerHTML = `<span style="color:${highlight}">ສະບາຍດີ! ຍິນດີ</span><span style="color:rgba(255,255,255,0.58)"> ຕ້ອນຮັບ</span>`;
+    previewEl.innerHTML = `<span style="color:${highlight}">ສະບາຍດີ! ຍິນດີ</span><span style="color:rgba(255,255,255,0.58)"> ຕ້ອນຮັບ</span>${bilingualSuffix}`;
   } else {
-    previewEl.innerHTML = `<span>ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler</span>`;
+    previewEl.innerHTML = autoAccent
+      ? `<span>ສະບາຍດີ! ໂປຣໂມຊັ່ນ <span style="color:${accentHex}">100% ຟຣີ</span></span>${bilingualSuffix}`
+      : `<span>ສະບາຍດີ! ຍິນດີຕ້ອນຮັບເຂົ້າສູ່ CapCut Lao Subtitler</span>${bilingualSuffix}`;
   }
 
   // Adjust vertical placement inside TikTok mockup based on position setting
@@ -106,12 +121,14 @@ function saveUserSettings() {
       strokeColor: document.getElementById("strokeColor")?.value || "#000000",
       strokeWidth: document.getElementById("strokeWidth")?.value || "3",
       backgroundBanner: document.getElementById("backgroundBanner")?.checked || false,
+      autoAccentKeywords: document.getElementById("autoAccentKeywords")?.checked ?? true,
       fontFamilySelect: "Noto Sans Lao Regular",
       fontFamily: "Noto Sans Lao Regular",
       selectedAnimationMode: selectedAnimationMode || "word_by_word",
       selectedEntranceEffect: selectedEntranceEffect || "pop_bounce",
       transcriptionEngine: document.getElementById("transcriptionEngine")?.value || "gemini",
       transcriptionModel: document.getElementById("transcriptionModel")?.value || "gemini-2.5-flash",
+      bilingualMode: document.getElementById("bilingualMode")?.value || "off",
       speechStyle: speechStyleEl ? speechStyleEl.value : "verbatim",
       glossary: document.getElementById("glossary")?.value || "",
     };
@@ -145,8 +162,14 @@ function loadUserSettings() {
     if (typeof settings.backgroundBanner === "boolean" && document.getElementById("backgroundBanner")) {
       document.getElementById("backgroundBanner").checked = settings.backgroundBanner;
     }
+    if (typeof settings.autoAccentKeywords === "boolean" && document.getElementById("autoAccentKeywords")) {
+      document.getElementById("autoAccentKeywords").checked = settings.autoAccentKeywords;
+    }
     if (document.getElementById("fontFamilySelect")) {
       document.getElementById("fontFamilySelect").value = "Noto Sans Lao Regular";
+    }
+    if (settings.bilingualMode && document.getElementById("bilingualMode")) {
+      document.getElementById("bilingualMode").value = settings.bilingualMode;
     }
 
     if (settings.selectedAnimationMode) {
@@ -215,7 +238,9 @@ document.querySelectorAll("#entranceEffectGroup .mode-card").forEach((card) => {
   "strokeColor",
   "strokeWidth",
   "backgroundBanner",
+  "autoAccentKeywords",
   "fontFamilySelect",
+  "bilingualMode",
   "glossary",
   "transcriptionEngine",
   "transcriptionModel",
@@ -261,8 +286,66 @@ tiktokSafeZoneToggle?.addEventListener("change", () => {
   }
 });
 const projectDirInput = document.getElementById("projectDir");
+const recentProjectsSelect = document.getElementById("recentProjectsSelect");
+const restoreBackupBtn = document.getElementById("restoreBackupBtn");
 const browseDirBtn = document.getElementById("browseDir");
 const checkProjectBtn = document.getElementById("checkProjectBtn");
+
+async function loadRecentProjects() {
+  if (!recentProjectsSelect) return;
+  try {
+    const list = await window.capcutLao.getRecentProjects();
+    if (list && list.length > 0) {
+      recentProjectsSelect.innerHTML = `<option value="">-- ເລືອກໂຄງການ CapCut ຫຼ້າສຸດ (${list.length} ໂຄງການ) --</option>`;
+      for (const proj of list) {
+        const opt = document.createElement("option");
+        opt.value = proj.path;
+        const dateStr = new Date(proj.modifiedMs).toLocaleDateString();
+        opt.textContent = `🎬 ${proj.name} (${dateStr})`;
+        recentProjectsSelect.appendChild(opt);
+      }
+    }
+  } catch (e) {
+    console.warn("Could not load recent projects:", e);
+  }
+}
+
+recentProjectsSelect?.addEventListener("change", async () => {
+  if (recentProjectsSelect.value) {
+    projectDirInput.value = recentProjectsSelect.value;
+    saveUserSettings();
+    await validateSelectedProject({ quiet: false });
+  }
+});
+
+restoreBackupBtn?.addEventListener("click", async () => {
+  const projectDir = projectDirInput.value;
+  if (!projectDir) {
+    setStatusCard(projectCheckResult, "error", "<strong>ກະລຸນາເລືອກໂຟນເດີໂຄງການກ່ອນ.</strong>");
+    return;
+  }
+  const confirmed = confirm("ທ່ານຕ້ອງການກູ້ຄືນໂຄງການ CapCut ຈາກໄຟລ໌ສຳຮອງຫຼ້າສຸດ (.backup) ແທ້ບໍ?");
+  if (!confirmed) return;
+
+  setStatusCard(projectCheckResult, "warning", "<strong>ກຳລັງກູ້ຄືນໂຄງການ...</strong>");
+  const res = await window.capcutLao.restoreProjectBackup(projectDir);
+  if (res.ok) {
+    setStatusCard(
+      projectCheckResult,
+      "ok",
+      `<strong>ກູ້ຄືນໂຄງການສຳເລັດແລ້ວ! ↩️</strong><div class="summary-note">ກູ້ຄືນຈາກ: ${escapeHtml(res.restoredFrom)}</div>`
+    );
+    await validateSelectedProject({ quiet: true });
+  } else {
+    setStatusCard(
+      projectCheckResult,
+      "error",
+      `<strong>ກູ້ຄືນລົ້ມເຫຼວ:</strong><div class="summary-note">${escapeHtml(res.error)}</div>`
+    );
+  }
+});
+
+loadRecentProjects();
 const projectCheckResult = document.getElementById("projectCheckResult");
 const runSummaryPanel = document.getElementById("runSummaryPanel");
 const runSummaryBody = document.getElementById("runSummaryBody");
@@ -589,6 +672,7 @@ function collectConfig() {
       strokeColor: document.getElementById("strokeColor").value,
       strokeWidth: parseInt(document.getElementById("strokeWidth").value, 10),
       backgroundBanner: document.getElementById("backgroundBanner").checked,
+      autoAccentKeywords: document.getElementById("autoAccentKeywords")?.checked ?? true,
       fontFamily: getSelectedFontFamily(),
       animationMode: selectedAnimationMode,
       entranceEffect: selectedEntranceEffect,
@@ -596,6 +680,7 @@ function collectConfig() {
     transcription: {
       engine: document.getElementById("transcriptionEngine").value,
       model: document.getElementById("transcriptionModel").value,
+      bilingualMode: document.getElementById("bilingualMode")?.value || "off",
       speechStyle: document.querySelector('input[name="speechStyle"]:checked')
         .value,
       glossary: document.getElementById("glossary").value,

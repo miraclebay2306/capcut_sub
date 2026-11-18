@@ -7,6 +7,8 @@ import {
   SubtitlePosition,
   ExtractedSubtitle,
   ExtractionResult,
+  RecentProject,
+  BackupRestoreResult,
 } from "./types";
 import {
   SubtitleCue,
@@ -179,6 +181,8 @@ function makeContentStyle(
   };
 }
 
+const KEYWORD_ACCENT_REGEX = /\d+(?:[.,]\d+)*%?|[₭$฿]|(?:\b(?:ຟຣີ|ດ່ວນ|ດີທີ່ສຸດ|ໃຫມ່|ພິເສດ|free|pro|vip|best|new)\b)/i;
+
 function buildStyledTextContent(
   cue: SubtitleCue,
   style: PipelineConfig["subtitleStyle"],
@@ -199,8 +203,20 @@ function buildStyledTextContent(
 
   const isLao = (str: string) => /[\u0E80-\u0EFF]/.test(str);
 
-  for (let i = 0; i < cue.runs.length; i++) {
-    const rawRunText = cleanLaoText(cue.runs[i].text);
+  // If auto-accent is enabled in sentence mode, split tokens so numbers/keywords get accented
+  let runs = cue.runs;
+  if (style.autoAccentKeywords && !hasHighlightRuns && cue.runs.length === 1 && cue.runs[0].text) {
+    const rawTokens = cue.runs[0].text.split(/(\s+|\d+(?:[.,]\d+)*%?|[₭$฿])/).filter((t) => t.length > 0);
+    if (rawTokens.length > 1) {
+      runs = rawTokens.map((t) => ({ text: t }));
+    }
+  }
+
+  const accentHex = colorHex.toUpperCase() === "#FFD400FF" ? "#39FF14FF" : "#FFD400FF";
+  const accentRgb = hexToRgbFloat(accentHex);
+
+  for (let i = 0; i < runs.length; i++) {
+    const rawRunText = cleanLaoText(runs[i].text);
     if (!rawRunText) continue;
 
     let renderedRunText = rawRunText;
@@ -215,8 +231,14 @@ function buildStyledTextContent(
     const start = utf16LEByteLen(text);
     text += renderedRunText;
     const end = utf16LEByteLen(text);
-    const rgb = cue.runs[i].highlighted ? highlightRgb : baseRgb;
-    const alpha = hasHighlightRuns && !cue.runs[i].highlighted ? 0.58 : 1.0;
+
+    const isAccent = Boolean(style.autoAccentKeywords && KEYWORD_ACCENT_REGEX.test(rawRunText));
+    const rgb = runs[i].highlighted
+      ? highlightRgb
+      : isAccent
+      ? accentRgb
+      : baseRgb;
+    const alpha = hasHighlightRuns && !runs[i].highlighted ? 0.58 : 1.0;
 
     styles.push(
       makeContentStyle(
@@ -999,6 +1021,79 @@ export function applySubtitlesToDraft(
     const verification = verifySavedDraft(outputPath, count);
     const srtContent = cuesToSrt(cues);
     return { ok: true, outputPath, subtitlesGenerated: count, verification, srtContent };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Scans standard CapCut and Jianying directories to locate the most recent projects.
+ */
+export function getRecentCapCutProjects(): RecentProject[] {
+  const localAppData = process.env.LOCALAPPDATA || "";
+  const candidateDirs = [
+    path.join(localAppData, "CapCut", "User Data", "Projects", "com.lveditor.draft"),
+    path.join(localAppData, "JianyingPro", "User Data", "Projects", "com.lveditor.draft"),
+  ];
+
+  const results: RecentProject[] = [];
+
+  for (const root of candidateDirs) {
+    if (!fs.existsSync(root)) continue;
+    try {
+      const entries = fs.readdirSync(root, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const projectDir = path.join(root, entry.name);
+        const draftPath = path.join(projectDir, "draft_content.json");
+        if (fs.existsSync(draftPath)) {
+          try {
+            const stat = fs.statSync(draftPath);
+            results.push({
+              name: entry.name,
+              path: projectDir,
+              modifiedMs: stat.mtimeMs,
+            });
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+
+  results.sort((a, b) => b.modifiedMs - a.modifiedMs);
+  return results.slice(0, 10);
+}
+
+/**
+ * Restores draft_content.json from the most recent timestamped backup file.
+ */
+export function restoreProjectBackup(projectDir: string): BackupRestoreResult {
+  if (!projectDir || !fs.existsSync(projectDir)) {
+    return { ok: false, error: "Project folder does not exist." };
+  }
+
+  try {
+    const files = fs.readdirSync(projectDir);
+    const backups = files
+      .filter((f) => f.startsWith("draft_content.backup.") && f.endsWith(".json"))
+      .map((f) => ({
+        name: f,
+        time: parseInt(f.replace("draft_content.backup.", "").replace(".json", ""), 10) || 0,
+      }))
+      .sort((a, b) => b.time - a.time);
+
+    if (backups.length === 0) {
+      return { ok: false, error: "ບໍ່ພົບໄຟລ໌ສຳຮອງ (.backup) ໃນໂຟນເດີໂຄງການນີ້." };
+    }
+
+    const latestBackup = path.join(projectDir, backups[0].name);
+    const draftPath = path.join(projectDir, "draft_content.json");
+
+    const content = fs.readFileSync(latestBackup, "utf8");
+    writeTextFileDurably(draftPath, content);
+    touchProjectFiles(projectDir, [draftPath]);
+
+    return { ok: true, restoredFrom: backups[0].name };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

@@ -5,6 +5,8 @@ import { runPipeline, validateProjectDirectory } from "../src/core/pipeline";
 import {
   extractSubtitlesFromDraft,
   applySubtitlesToDraft,
+  getRecentCapCutProjects,
+  restoreProjectBackup,
 } from "../src/core/draftContentEditor";
 import { PipelineConfig, PipelineProgress } from "../src/core/types";
 
@@ -108,6 +110,14 @@ ipcMain.handle("validate-project", async (_event, projectDir: string) => {
 // ---------------------------------------------------------------------------
 ipcMain.handle("extract-subtitles", async (_event, projectDir: string) => {
   return extractSubtitlesFromDraft(projectDir);
+});
+
+ipcMain.handle("get-recent-projects", async () => {
+  return getRecentCapCutProjects();
+});
+
+ipcMain.handle("restore-project-backup", async (_event, projectDir: string) => {
+  return restoreProjectBackup(projectDir);
 });
 
 ipcMain.handle(

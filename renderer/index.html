@@ -68,12 +68,21 @@
         </div>
 
         <div>
-          <label class="field-label" for="projectDir">ໂຟນເດີໂຄງການ CapCut</label>
-          <div class="flex gap-2">
-            <input id="projectDir" type="text" readonly placeholder="ກົດ ເລືອກ... ເພື່ອເລືອກໂຟນເດີໂຄງການ…" class="input flex-1 font-mono text-sm text-muted" />
-            <button id="browseDir" type="button" class="btn-secondary text-sm whitespace-nowrap">ເລືອກ…</button>
-            <button id="checkProjectBtn" type="button" class="btn-secondary text-sm whitespace-nowrap">ກວດໂຄງການ</button>
-            <button id="extractSubtitlesBtn" type="button" class="btn-secondary text-sm whitespace-nowrap flex items-center gap-1.5"><span class="text-gold">📥</span><span>ດຶງຊັບ / Export SRT</span></button>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="field-label mb-0" for="projectDir">ໂຟນເດີໂຄງການ CapCut (CapCut Project)</label>
+            <span class="text-xs text-muted">ລະບົບກວດພົບໂຄງການຫຼ້າສຸດອັດຕະໂນມັດ</span>
+          </div>
+          <div class="grid gap-2">
+            <div class="flex gap-2">
+              <select id="recentProjectsSelect" class="input flex-1 text-sm font-mono">
+                <option value="">-- ເລືອກໂຄງການ CapCut ຫຼ້າສຸດ --</option>
+              </select>
+              <button id="browseDir" type="button" class="btn-secondary text-sm whitespace-nowrap">ເລືອກໂຟນເດີເອງ…</button>
+              <button id="checkProjectBtn" type="button" class="btn-secondary text-sm whitespace-nowrap">ກວດໂຄງການ</button>
+              <button id="extractSubtitlesBtn" type="button" class="btn-secondary text-sm whitespace-nowrap flex items-center gap-1.5"><span class="text-gold">📥</span><span>ດຶງຊັບ / Export SRT</span></button>
+              <button id="restoreBackupBtn" type="button" class="btn-ghost text-sm whitespace-nowrap flex items-center gap-1" title="ກູ້ຄືນໂຄງການຈາກໄຟລ໌ສຳຮອງ (.backup)"><span>↩️</span><span>ຍ້ອນກັບ</span></button>
+            </div>
+            <input id="projectDir" type="text" readonly placeholder="ເສັ້ນທາງໂຟນເດີໂຄງການ..." class="input font-mono text-xs text-muted bg-panel2" />
           </div>
           <div id="projectCheckResult" class="status-card hidden mt-3"></div>
           <div id="extractedSubtitlesPanel" class="status-card hidden mt-3"></div>
@@ -141,15 +150,21 @@
                 ແຖບພື້ນຫຼັງ / ເງົາ
               </label>
             </div>
-          <div class="mt-4">
-            <label class="field-label" for="fontFamilySelect">ຟອນລາວ (Lao Subtitle Font)</label>
-            <div class="flex gap-2">
+          </div>
+          <div class="mt-4 pt-4 border-t border-border flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <label class="field-label" for="fontFamilySelect">ຟອນລາວ (Lao Subtitle Font)</label>
               <select id="fontFamilySelect" class="input text-sm max-w-md">
                 <option value="Noto Sans Lao Regular" selected>Noto Sans Lao Regular</option>
               </select>
             </div>
+            <div class="flex items-center pt-3">
+              <label class="inline-flex items-center gap-2 text-sm cursor-pointer select-none text-gold font-medium">
+                <input id="autoAccentKeywords" type="checkbox" class="checkbox" checked />
+                <span>⚡ ໄຮໄລຕ໌ຕົວເລກ ແລະ ຄຳສຳຄັນອັດຕະໂນມັດ (Smart Keyword Accent)</span>
+              </label>
+            </div>
           </div>
-        </div>
         <div class="mt-4 pt-4 border-t border-border">
           <div class="flex items-center justify-between mb-2">
             <div>
@@ -273,6 +288,15 @@
         <div>
           <label class="field-label" for="transcriptionModel">Model</label>
           <select id="transcriptionModel" class="input text-sm font-mono max-w-md"></select>
+        </div>
+        <div>
+          <label class="field-label" for="bilingualMode">ຊັບໄຕເຕີ້ນສອງພາສາ (Bilingual Dual Subtitles)</label>
+          <select id="bilingualMode" class="input text-sm max-w-md">
+            <option value="off" selected>ພາສາລາວດຽວ (Lao Only)</option>
+            <option value="lao_thai">ລາວ + ໄທ (Lao + Thai Translation)</option>
+            <option value="lao_english">ລາວ + ອັງກິດ (Lao + English Translation)</option>
+          </select>
+          <p class="text-xs text-muted mt-1">ສ້າງຊັບ 2 ແຖວ (ແຖວເທິງພາສາລາວ, ແຖວລຸ່ມຄຳແປ) ດຶງດູດຜູ້ຊົມເພີ່ມຂຶ້ນ</p>
         </div>
         <div>
           <label class="field-label">ຮູບແບບພາສາເວົ້າ</label>

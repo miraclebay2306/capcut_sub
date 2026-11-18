@@ -9,6 +9,7 @@ export type TextColor = "white" | "yellow" | "neon_green" | "hot_pink" | "cyan";
 export type SubtitlePosition = "bottom_center" | "center_screen" | "lower_center";
 export type AnimationMode = "sentence" | "word_by_word" | "karaoke";
 export type EntranceEffect = "pop_bounce" | "zoom_in" | "none";
+export type BilingualMode = "off" | "lao_thai" | "lao_english";
 export type SpeechStyle = "polished" | "verbatim";
 export type SaveMode = "copy" | "overwrite";
 export type TranscriptionEngine = "gemini";
@@ -23,6 +24,7 @@ export interface SubtitleStyleConfig {
   fontFamily: string; // e.g. "Noto Sans Lao"
   animationMode: AnimationMode;
   entranceEffect?: EntranceEffect;
+  autoAccentKeywords?: boolean;
 }
 
 export interface TranscriptionConfig {
@@ -30,6 +32,7 @@ export interface TranscriptionConfig {
   model: string; // model name for Gemini
   speechStyle: SpeechStyle;
   glossary: string; // free-text list of proper nouns / tech terms
+  bilingualMode?: BilingualMode;
 }
 
 export interface TimelineConfig {
@@ -122,5 +125,17 @@ export interface ProjectValidationResult {
   existingTextMaterials: number;
   missingMediaFiles: string[];
   warnings: string[];
+  error?: string;
+}
+
+export interface RecentProject {
+  name: string;
+  path: string;
+  modifiedMs: number;
+}
+
+export interface BackupRestoreResult {
+  ok: boolean;
+  restoredFrom?: string;
   error?: string;
 }
