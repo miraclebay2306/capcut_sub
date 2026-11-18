@@ -27,17 +27,19 @@ function buildPrompt(config: TranscriptionConfig): string {
     : "";
 
   return [
-    "You are a native Lao linguistic expert and master transcriber.",
-    "Listen carefully to the audio file and transcribe ALL spoken speech into authentic, grammatically correct Lao script (ອັກສອນລາວ), sentence by sentence.",
+    "You are the world's leading native Lao linguist, master transcriber, and subtitle localization specialist.",
+    "Listen carefully to the audio file and transcribe ALL spoken speech into 100% authentic, grammatically correct Lao script (ອັກສອນລາວ), sentence by sentence.",
     "",
-    "CRITICAL LAO ORTHOGRAPHY & ACCURACY RULES (ຄືຄົນລາວແທ້ໆຂຽນ):",
-    "- 100% AUTHENTIC LAO SPELLING: Use proper Lao orthography following the Lao Ministry of Education standard.",
+    "CRITICAL LAO ORTHOGRAPHY & ACCURACY RULES (ຂຽນຄືຄົນລາວແທ້ໆ 100% ຕາມກະຊວງສຶກສາ):",
+    "- 100% AUTHENTIC LAO SPELLING: Use proper official Lao orthography (ອັກສອນລາວ).",
     "- NEVER BORROW THAI SPELLING PATTERNS: Never mix Thai orthography or loan patterns (e.g. use 'ບໍ່' NEVER 'ບໍ', 'ແມ່ນ' NEVER 'ແນ່ນ', 'ເຈົ້າ' NEVER 'ເຈົາ', 'ຂອບໃຈ' NEVER 'ຂອບໄຈ', 'ເດີ້'/'ເດີ', 'ຫວາ'/'ບໍ່', 'ແນວໃດ', 'ກໍ'/'ກໍ່').",
-    "- ACCURATE TONE MARKS: Accurately place Mai Ek (-່) and Mai Tho (-້) according to actual spoken Lao pitch and consonant classes (High/Mid/Low).",
-    "- CONVERSATIONAL ACCURACY: Common Lao spoken idioms ('ສະບາຍດີ', 'ໂດຍ', 'ເຈົ້າ', 'ແມ່ນແລ້ວ', 'ຂອບໃຈຫຼາຍໆ', 'ເນາະ', 'ຊັ້ນເດີ', 'ບາດນີ້', 'ພໍດີ', 'ແທ້ຫວາ') must be transcribed with pristine Lao spelling.",
-    "- NO RANDOM CONSONANT DROPS: Preserve proper Lao vowels and ligature consonants (ເຊັ່ນ ຫງ, ຫນ/ໜ, ຫມ/ໝ, ຫຼ).",
-    "- NATURAL WORD SEGMENTATION IN 'words': In the 'words' array, each item MUST be a complete, unbroken Lao word or compound (ເຊັ່ນ 'ລະບົບເຮົາ', 'ຮອງຮັບ', 'ທຸກອຸປະກອນ', 'ຖືວ່າເປັນການ', 'ແນະນຳ', 'ໂປຣໂມຊັ່ນ'). NEVER break compound words in half.",
-    "- PROPER SPACING IN 'text': In 'text', separate grammatical clauses and breathing pauses with a natural space (ເຊັ່ນ 'ລະບົບເຮົາຮອງຮັບ ທຸກອຸປະກອນ') so that subtitles can be grouped naturally without cutting words.",
+    "- ACCURATE TONE MARKS: Accurately place Mai Ek (-່) and Mai Tho (-້) according to actual spoken Lao pitch and consonant classes (High/Mid/Low). Never omit tone marks.",
+    "- CONVERSATIONAL ACCURACY: Common spoken Lao idioms and particles ('ສະບາຍດີ', 'ໂດຍ', 'ເຈົ້າ', 'ແມ່ນແລ້ວ', 'ຂອບໃຈຫຼາຍໆ', 'ເນາະ', 'ຊັ້ນເດີ', 'ບາດນີ້', 'ພໍດີ', 'ແທ້ຫວາ', 'ບໍ່ວ່າຈະເປັນ') must be transcribed with pristine Lao spelling.",
+    "- NEVER SPLIT COMPOUNDS OR SYLLABLES IN 'words':",
+    "  In the 'words' array, every single element MUST be a complete, unbroken word or compound phrase with standalone meaning.",
+    "  - NEVER split prefixes from stems: Write 'ການຮັກ' (NEVER 'ກາ ນຮັກ' or 'ການ' + 'ຮັກ'); Write 'ການແນະນຳ' (NEVER 'ກາ ນແນະນຳ' or 'ການ' + 'ແນະນຳ'); Write 'ຄວາມຮັກ' (NEVER 'ຄວາ ມຮັກ'); Write 'ຜູ້ໃຊ້' (NEVER 'ຜູ້' + 'ໃຊ້'); Write 'ບໍ່ແມ່ນ' (NEVER 'ບໍ ແມ່ນ' or 'ບໍແນ່ນ'); Write 'ໄດ້ຍິນ' (NEVER 'ໄດ້' + 'ຍິນ').",
+    "  - NEVER split multi-syllable compounds: Write 'ອຸປະກອນ' (NEVER 'ອຸປະ' + 'ກອນ'); Write 'ໂປຣໂມຊັ່ນ' (NEVER 'ໂປ' + 'ໂມ' + 'ຊັ່ນ' or 'ໂປໂມ' + 'ຊັ່ນ'); Write 'ແນະນຳ' (NEVER 'ແນະ' + 'ນຳ'); Write 'ລະບົບ' (NEVER 'ລະ' + 'ບົບ'); Write 'ຮອງຮັບ' (NEVER 'ຮອງ' + 'ຮັບ'); Write 'ໂທລະສັບ' (NEVER 'ໂທລະ' + 'ສັບ'); Write 'ຕິດຕັ້ງ' (NEVER 'ຕິດ' + 'ຕັ້ງ'); Write 'ດາວໂຫຼດ' (NEVER 'ດາວ' + 'ໂຫຼດ'); Write 'ອັບເດດ' (NEVER 'ອັບ' + 'ເດດ'); Write 'ອອນລາຍ' (NEVER 'ອອນ' + 'ລາຍ'); Write 'ສະບາຍດີ' (NEVER 'ສະ' + 'ບາຍດີ'); Write 'ຂອບໃຈ' (NEVER 'ຂອບ' + 'ໃຈ'); Write 'ລູກຄ້າ' (NEVER 'ລູກ' + 'ຄ້າ'); Write 'ບໍລິການ' (NEVER 'ບໍ' + 'ລິການ').",
+    "  - In 'text', do NOT put spaces between words within a phrase (ເຊັ່ນ 'ລະບົບເຮົາຮອງຮັບທຸກອຸປະກອນ' NOT 'ລະບົບ ເຮົາ ຮອງຮັບ ທຸກ ອຸປະກອນ'). Only put spaces between major phrases, clauses, or breathing pauses.",
     "",
     "CRITICAL FOR TIMING & AUDIO SYNCHRONIZATION:",
     "1. You MUST listen carefully at high temporal resolution and provide precise millisecond-level word timestamps (startSec and endSec) for EVERY single word in 'words'.",
@@ -213,7 +215,14 @@ export async function transcribeWithGemini(
         if (currentModelName !== primaryModel && attempt === 1) {
           onStatusUpdate?.(`ກຳລັງລອງໃຊ້ Model ສຳຮອງ (${currentModelName})...`);
         }
-        const model = genAI.getGenerativeModel({ model: currentModelName });
+        const model = genAI.getGenerativeModel({
+          model: currentModelName,
+          systemInstruction:
+            "You are the world's leading native Lao linguist, master phonetician, and subtitle localization specialist. You transcribe spoken Lao audio with 100% authentic Lao orthography following the Lao Ministry of Education standard. You preserve natural compound words without splitting them, place tone marks accurately according to Lao phonology, and provide precise millisecond-level word timestamps.",
+          generationConfig: {
+            temperature: 0.1,
+          },
+        });
         const result = await model.generateContent([
           { text: prompt },
           {

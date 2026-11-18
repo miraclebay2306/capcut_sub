@@ -109,30 +109,250 @@ export function sanitizeCues(cues: SubtitleCue[]): SubtitleCue[] {
   return result;
 }
 
+const THAI_TO_LAO_MAP: Record<number, number> = {
+  0x0E01: 0x0E81, 0x0E02: 0x0E82, 0x0E04: 0x0E84, 0x0E07: 0x0E87, 0x0E08: 0x0E88,
+  0x0E0A: 0x0E8A, 0x0E0B: 0x0E8A, 0x0E0D: 0x0E8D, 0x0E14: 0x0E94, 0x0E15: 0x0E95,
+  0x0E16: 0x0E96, 0x0E17: 0x0E97, 0x0E19: 0x0E99, 0x0E1A: 0x0E9A, 0x0E1B: 0x0E9B,
+  0x0E1C: 0x0E9C, 0x0E1D: 0x0E9D, 0x0E1E: 0x0E9E, 0x0E1F: 0x0E9F, 0x0E21: 0x0EA1,
+  0x0E22: 0x0EA2, 0x0E23: 0x0EA3, 0x0E25: 0x0EA5, 0x0E27: 0x0EA7, 0x0E2A: 0x0EAA,
+  0x0E2B: 0x0EAB, 0x0E2D: 0x0EAD, 0x0E2E: 0x0EAE, 0x0E30: 0x0EB0, 0x0E31: 0x0EB1,
+  0x0E32: 0x0EB2, 0x0E33: 0x0EB3, 0x0E34: 0x0EB4, 0x0E35: 0x0EB5, 0x0E36: 0x0EB6,
+  0x0E37: 0x0EB7, 0x0E38: 0x0EB8, 0x0E39: 0x0EB9, 0x0E40: 0x0EC0, 0x0E41: 0x0EC1,
+  0x0E42: 0x0EC2, 0x0E43: 0x0EC3, 0x0E44: 0x0EC4, 0x0E46: 0x0EC6, 0x0E48: 0x0EC8,
+  0x0E49: 0x0EC9, 0x0E4A: 0x0ECA, 0x0E4B: 0x0ECB, 0x0E4C: 0x0ECC,
+};
+
+export function normalizeThaiToLaoUnicode(text: string): string {
+  if (!text) return "";
+  let res = "";
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (THAI_TO_LAO_MAP[code]) {
+      res += String.fromCharCode(THAI_TO_LAO_MAP[code]);
+    } else {
+      res += text[i];
+    }
+  }
+  return res;
+}
+
 /**
- * Cleans and normalizes Lao text while strictly preserving legitimate spaces
- * between phrases, clauses, and English/number words.
+ * Cleans and normalizes Lao text: converts accidental Thai unicode glyphs,
+ * removes accidental spaces before tone marks or vowels, and fixes common spelling slips.
  */
 export function cleanLaoText(text: any): string {
   if (text === null || text === undefined) return "";
   let cleaned = typeof text === "string" ? text : String(text);
+  cleaned = normalizeThaiToLaoUnicode(cleaned);
   // Collapse multiple spaces/tabs into a single space
   cleaned = cleaned.replace(/[ \t]+/g, " ");
   // Remove accidental spaces before detached Lao vowels or tone marks
   cleaned = cleaned.replace(/\s+([\u0EB0-\u0EBD\u0EC8-\u0ECD])/g, "$1");
+  // Fix common AI spelling slips
+  cleaned = cleaned
+    .replace(/(^|\s)ບໍ(\s|$)/g, "$1ບໍ່$2")
+    .replace(/(^|\s)ແນ່ນແລ້ວ(\s|$)/g, "$1ແມ່ນແລ້ວ$2")
+    .replace(/(^|\s)ແນ່ນບໍ(\s|$)/g, "$1ແມ່ນບໍ່$2")
+    .replace(/(^|\s)ເຈົາ(\s|$)/g, "$1ເຈົ້າ$2")
+    .replace(/(^|\s)ຂອບໄຈ(\s|$)/g, "$1ຂອບໃຈ$2")
+    .replace(/ໂປໂມຊັນ/g, "ໂປຣໂມຊັ່ນ")
+    .replace(/ໂປໂມຊັ່ນ/g, "ໂປຣໂມຊັ່ນ");
   return cleaned.trim();
 }
 
 /**
- * Joins an array of words/runs together into natural spoken Lao subtitles.
+ * Joins tokens naturally according to native Lao orthography:
+ * Adjacent Lao words inside the same phrase have NO space between them.
+ * Spaces are only inserted between Lao and English/numbers, or between English words.
+ */
+export function joinLaoWordsSmart(tokens: string[]): string {
+  if (!tokens || tokens.length === 0) return "";
+  const isLaoChar = (ch: string) => /[\u0E80-\u0EFF]/.test(ch);
+
+  let result = "";
+  for (const rawToken of tokens) {
+    const token = cleanLaoText(rawToken);
+    if (!token) continue;
+    if (result.length === 0) {
+      result = token;
+      continue;
+    }
+    const lastChar = result[result.length - 1];
+    const firstChar = token[0];
+
+    // If both adjacent characters are Lao: join without space!
+    if (isLaoChar(lastChar) && isLaoChar(firstChar)) {
+      result += token;
+    } else {
+      // Between Lao and English/Numbers or English and English: insert single space
+      result += " " + token;
+    }
+  }
+  return result;
+}
+
+/**
+ * Backward compatibility wrapper for joinLaoWords
  */
 export function joinLaoWords(words: any[]): string {
   if (!Array.isArray(words)) return "";
-  const cleaned = words
-    .map((w) => (w === null || w === undefined ? "" : String(w).trim()))
-    .filter((w) => w.length > 0);
-  if (cleaned.length === 0) return "";
-  return cleanLaoText(cleaned.join(" "));
+  return joinLaoWordsSmart(words.map((w) => String(w || "")));
+}
+
+export const LAO_COMPOUND_PAIRS: [string, string, string][] = [
+  ["ອຸປະ", "ກອນ", "ອຸປະກອນ"],
+  ["ໂປ", "ໂມຊັ່ນ", "ໂປຣໂມຊັ່ນ"],
+  ["ໂປໂມ", "ຊັ່ນ", "ໂປຣໂມຊັ່ນ"],
+  ["ໂປຣ", "ໂມຊັ່ນ", "ໂປຣໂມຊັ່ນ"],
+  ["ໂປຣໂມ", "ຊັ່ນ", "ໂປຣໂມຊັ່ນ"],
+  ["ແນະ", "ນຳ", "ແນະນຳ"],
+  ["ລະ", "ບົບ", "ລະບົບ"],
+  ["ຮອງ", "ຮັບ", "ຮອງຮັບ"],
+  ["ໂທລະ", "ສັບ", "ໂທລະສັບ"],
+  ["ຕິດ", "ຕັ້ງ", "ຕິດຕັ້ງ"],
+  ["ຕິດ", "ຕໍ່", "ຕິດຕໍ່"],
+  ["ຕິດ", "ຕາມ", "ຕິດຕາມ"],
+  ["ດາວ", "ໂຫຼດ", "ດາວໂຫຼດ"],
+  ["ອັບ", "ເດດ", "ອັບເດດ"],
+  ["ອອນ", "ລາຍ", "ອອນລາຍ"],
+  ["ຄອມ", "ພິວເຕີ", "ຄອມພິວເຕີ"],
+  ["ສະ", "ບາຍດີ", "ສະບາຍດີ"],
+  ["ສະບາຍ", "ດີ", "ສະບາຍດີ"],
+  ["ຂອບ", "ໃຈ", "ຂອບໃຈ"],
+  ["ລູກ", "ຄ້າ", "ລູກຄ້າ"],
+  ["ພົວ", "ພັນ", "ພົວພັນ"],
+  ["ພັດ", "ທະນາ", "ພັດທະນາ"],
+  ["ບໍ", "ລິການ", "ບໍລິການ"],
+  ["ບໍລິ", "ການ", "ບໍລິການ"],
+  ["ໂຄ", "ສະນາ", "ໂຄສະນາ"],
+  ["ຕະ", "ຫຼາດ", "ຕະຫຼາດ"],
+  ["ຊອບ", "ແວ", "ຊອບແວ"],
+  ["ຟັງ", "ຊັ່ນ", "ຟັງຊັ່ນ"],
+  ["ວິດີ", "ໂອ", "ວິດີໂອ"],
+  ["ວິ", "ດີໂອ", "ວິດີໂອ"],
+  ["ຮູບ", "ພາບ", "ຮູບພາບ"],
+  ["ຂໍ້", "ມູນ", "ຂໍ້ມູນ"],
+  ["ຂໍ້", "ຄວາມ", "ຂໍ້ຄວາມ"],
+  ["ຊັບ", "ໄຕເຕີ້ນ", "ຊັບໄຕເຕີ້ນ"],
+  ["ຊັບ", "ໄຕເຕິລ", "ຊັບໄຕເຕີ້ນ"],
+  ["ໂປ", "ແກຣມ", "ໂປຣແກຣມ"],
+  ["ໂປຣ", "ແກຣມ", "ໂປຣແກຣມ"],
+  ["ເວັບ", "ໄຊ", "ເວັບໄຊ"],
+  ["ເວັບ", "ໄຊທ໌", "ເວັບໄຊ"],
+  ["ອັດ", "ຕະໂນມັດ", "ອັດຕະໂນມັດ"],
+  ["ອັດຕະ", "ໂນມັດ", "ອັດຕະໂນມັດ"],
+  ["ປະ", "ໂຫຍກ", "ປະໂຫຍກ"],
+  ["ທຸ", "ລະກິດ", "ທຸລະກິດ"],
+  ["ທຸລະ", "ກິດ", "ທຸລະກິດ"],
+  ["ລາຍ", "ລະອຽດ", "ລາຍລະອຽດ"],
+  ["ງ່າຍ", "ດາຍ", "ງ່າຍດາຍ"],
+  ["ສະ", "ດວກ", "ສະດວກ"],
+  ["ວ່ອງ", "ໄວ", "ວ່ອງໄວ"],
+  ["ທຸກ", "ອຸປະກອນ", "ທຸກອຸປະກອນ"],
+  ["ຖື", "ວ່າ", "ຖືວ່າ"],
+  ["ຖືວ່າ", "ເປັນ", "ຖືວ່າເປັນ"],
+  ["ເປັນ", "ການ", "ເປັນການ"],
+  ["ໂດຍ", "ສະເພາະ", "ໂດຍສະເພາະ"],
+  ["ຍິນ", "ດີ", "ຍິນດີ"],
+  ["ຍິນດີ", "ຕ້ອນຮັບ", "ຍິນດີຕ້ອນຮັບ"],
+];
+
+const LAO_PREFIXES = ["ການ", "ຄວາມ", "ຜູ້", "ບໍ່", "ທີ່", "ໄດ້", "ຈະ", "ເປັນການ", "ຖືວ່າເປັນ"];
+
+export function isHangingLaoPrefix(text: string): boolean {
+  const t = cleanLaoText(text);
+  return LAO_PREFIXES.includes(t) || ["ຖືວ່າ", "ໃນ", "ສຳລັບ"].includes(t);
+}
+
+/**
+ * Glues detached codas, syllables, and known compound words back into single cohesive tokens.
+ * Specifically fixes:
+ *  - 'ກາ' + 'ນຮັກ' -> 'ການຮັກ'
+ *  - 'ອຸປະ' + 'ກອນ' -> 'ອຸປະກອນ'
+ *  - 'ໂປໂມ' + 'ຊັ່ນ' -> 'ໂປຣໂມຊັ່ນ'
+ *  - 'ການ' + 'ຮັກ' -> 'ການຮັກ'
+ *  - Single coda consonants: 'ກາ' + 'ນ' -> 'ການ'
+ */
+export function stitchLaoWordsAndTokens(
+  words: { word: string; startSec: number; endSec: number }[]
+): { word: string; startSec: number; endSec: number }[] {
+  if (!words || words.length === 0) return [];
+  const valid = words
+    .map((w) => ({
+      word: cleanLaoText(w.word),
+      startSec: w.startSec,
+      endSec: w.endSec,
+    }))
+    .filter((w) => w.word.length > 0);
+
+  if (valid.length === 0) return [];
+
+  const merged: { word: string; startSec: number; endSec: number }[] = [];
+
+  for (let i = 0; i < valid.length; i++) {
+    const curr = { ...valid[i] };
+    if (merged.length === 0) {
+      merged.push(curr);
+      continue;
+    }
+
+    const prev = merged[merged.length - 1];
+
+    // Check Case 1: Floating vowel/tone mark
+    if (/^[\u0EB0-\u0EBD\u0EC8-\u0ECD]/.test(curr.word)) {
+      prev.word = cleanLaoText(prev.word + curr.word);
+      prev.endSec = Math.max(prev.endSec, curr.endSec);
+      continue;
+    }
+
+    // Check Case 2: Floating leading vowel
+    if (/^[\u0EC0-\u0EC4]$/.test(prev.word)) {
+      prev.word = cleanLaoText(prev.word + curr.word);
+      prev.endSec = Math.max(prev.endSec, curr.endSec);
+      continue;
+    }
+
+    // Check Case 3: Detached single coda consonant: [ງນຍດບມວກສຕ]
+    if (/^[ງນຍດບມວກສຕ]$/.test(curr.word) && /[າິີຶືຸູະັຽຳ]/.test(prev.word[prev.word.length - 1])) {
+      prev.word = cleanLaoText(prev.word + curr.word);
+      prev.endSec = Math.max(prev.endSec, curr.endSec);
+      continue;
+    }
+
+    // Check Case 4: Coda attached to next syllable (e.g. prev="ກາ", curr="ນຮັກ" -> "ການຮັກ")
+    if (/[າິີຶືຸູະັຽຳ]$/.test(prev.word) && /^[ງນຍດບມວ][ຮນມຄພຕຈສກຂປຝ]/.test(curr.word)) {
+      prev.word = cleanLaoText(prev.word + curr.word);
+      prev.endSec = Math.max(prev.endSec, curr.endSec);
+      continue;
+    }
+
+    // Check Case 5: Known compound pairs
+    let matchedCompound = false;
+    for (const [p1, p2, target] of LAO_COMPOUND_PAIRS) {
+      if (prev.word === p1 && curr.word === p2) {
+        prev.word = target;
+        prev.endSec = Math.max(prev.endSec, curr.endSec);
+        matchedCompound = true;
+        break;
+      }
+    }
+    if (matchedCompound) continue;
+
+    // Check Case 6: Bound grammatical prefixes (ການ, ຄວາມ, ຜູ້, ບໍ່, ທີ່)
+    if (
+      (prev.word === "ການ" || prev.word === "ຄວາມ" || prev.word === "ຜູ້" || prev.word === "ບໍ່" || prev.word === "ທີ່") &&
+      /[\u0E80-\u0EFF]/.test(curr.word) &&
+      curr.word.length <= 8
+    ) {
+      prev.word = cleanLaoText(prev.word + curr.word);
+      prev.endSec = Math.max(prev.endSec, curr.endSec);
+      continue;
+    }
+
+    merged.push(curr);
+  }
+
+  return merged;
 }
 
 function splitTextIntoWords(text: any): string[] {
@@ -352,7 +572,54 @@ function splitSentenceIntoCompactChunks(
 }
 
 function buildSentenceCues(sentences: TranscribedSentence[]): SubtitleCue[] {
-  return buildCuesWithLimits(sentences, 34);
+  const cues: SubtitleCue[] = [];
+  for (const s of sentences) {
+    const rawText = (s.text || "").trim();
+    if (!rawText) continue;
+
+    // Split lines in case of bilingual (Lao \n Translation)
+    const lines = rawText.split("\n");
+    const laoLine = cleanLaoText(lines[0] || "");
+    const translationLine = lines[1] ? lines[1].trim() : "";
+
+    // If within safe line length (<= 42 chars) or bilingual, display full sentence
+    if (laoLine.length <= 42 || translationLine || !s.words || s.words.length === 0) {
+      const fullText = translationLine ? `${laoLine}\n${translationLine}` : laoLine;
+      cues.push({
+        startSec: s.startSec,
+        endSec: s.endSec,
+        runs: [{ text: fullText }],
+      });
+    } else {
+      // Very long monolingual sentence (> 42 chars): use stitched words with generous sentence boundary (~38 chars)
+      const validWords = s.words
+        .map((w) => ({
+          word: cleanLaoText(w.word),
+          startSec: w.startSec,
+          endSec: w.endSec,
+        }))
+        .filter((w) => w.word.length > 0);
+
+      if (validWords.length > 0) {
+        cues.push(...buildCuesFromWords(validWords, 38));
+      } else {
+        cues.push(...splitSentenceTextByPhrases(laoLine, s.startSec, s.endSec, 38));
+      }
+    }
+  }
+
+  // Extend endSec of each cue to fill small gaps (< 0.4s) to eliminate subtitle flicker
+  for (let i = 0; i < cues.length - 1; i++) {
+    const nextStart = cues[i + 1].startSec;
+    if (nextStart > cues[i].startSec) {
+      const gap = nextStart - cues[i].endSec;
+      if (gap >= 0 && gap < 0.4) {
+        cues[i].endSec = nextStart;
+      }
+    }
+  }
+
+  return sanitizeCues(cues);
 }
 
 function buildWordByWordCues(sentences: TranscribedSentence[]): SubtitleCue[] {
@@ -402,30 +669,49 @@ function buildCuesWithLimits(
 }
 
 function buildCuesFromWords(
-  words: { word: string; startSec: number; endSec: number }[],
+  rawWords: { word: string; startSec: number; endSec: number }[],
   targetMaxChars: number
 ): SubtitleCue[] {
+  // 1. Stitch words so no fragmented codas, prefixes or broken compounds exist
+  const words = stitchLaoWordsAndTokens(rawWords);
   if (words.length === 0) return [];
+
   const cues: SubtitleCue[] = [];
   let currentChunk: { word: string; startSec: number; endSec: number }[] = [];
-  let currentLen = 0;
 
-  for (const w of words) {
-    const wText = w.word;
-    const addLen = currentChunk.length === 0 ? wText.length : wText.length + 1;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (currentChunk.length === 0) {
+      currentChunk.push(w);
+      continue;
+    }
 
-    // Break ONLY at whole word boundary: NEVER slice a word in half
-    if (currentChunk.length > 0 && (currentLen + addLen > targetMaxChars || currentChunk.length >= 5)) {
+    const prevWord = currentChunk[currentChunk.length - 1];
+    const acousticGap = w.startSec - prevWord.endSec;
+    const candidateWords = [...currentChunk, w];
+    const candidateText = joinLaoWordsSmart(candidateWords.map((cw) => cw.word));
+
+    // Natural breaks:
+    // 1) Acoustic breath pause (> 0.35s)
+    const isAcousticPause = acousticGap > 0.35;
+    // 2) Character limit exceeded
+    const exceedsCharLimit = candidateText.length > targetMaxChars;
+
+    if (isAcousticPause || exceedsCharLimit) {
+      let hangingPrefix: { word: string; startSec: number; endSec: number } | null = null;
+      if (currentChunk.length > 1 && isHangingLaoPrefix(prevWord.word)) {
+        hangingPrefix = currentChunk.pop()!;
+      }
+
       cues.push({
         startSec: currentChunk[0].startSec,
         endSec: currentChunk[currentChunk.length - 1].endSec,
-        runs: [{ text: currentChunk.map((cw) => cw.word).join(" ") }],
+        runs: [{ text: joinLaoWordsSmart(currentChunk.map((cw) => cw.word)) }],
       });
-      currentChunk = [w];
-      currentLen = wText.length;
+
+      currentChunk = hangingPrefix ? [hangingPrefix, w] : [w];
     } else {
       currentChunk.push(w);
-      currentLen += addLen;
     }
   }
 
@@ -433,16 +719,16 @@ function buildCuesFromWords(
     cues.push({
       startSec: currentChunk[0].startSec,
       endSec: currentChunk[currentChunk.length - 1].endSec,
-      runs: [{ text: currentChunk.map((cw) => cw.word).join(" ") }],
+      runs: [{ text: joinLaoWordsSmart(currentChunk.map((cw) => cw.word)) }],
     });
   }
 
-  // Extend endSec of each cue to fill small gaps (< 0.5s) to eliminate subtitle flicker
+  // Extend endSec of each cue to fill small gaps (< 0.4s) to eliminate subtitle flicker
   for (let i = 0; i < cues.length - 1; i++) {
     const nextStart = cues[i + 1].startSec;
     if (nextStart > cues[i].startSec) {
       const gap = nextStart - cues[i].endSec;
-      if (gap >= 0 && gap < 0.5) {
+      if (gap >= 0 && gap < 0.4) {
         cues[i].endSec = nextStart;
       }
     }
@@ -464,21 +750,22 @@ function splitSentenceTextByPhrases(
 
   const chunks: string[] = [];
   let currentChunk: string[] = [];
-  let currentLen = 0;
 
   for (const w of words) {
-    const addLen = currentChunk.length === 0 ? w.length : w.length + 1;
-    if (currentChunk.length > 0 && (currentLen + addLen > targetMaxChars || currentChunk.length >= 5)) {
-      chunks.push(currentChunk.join(" "));
-      currentChunk = [w];
-      currentLen = w.length;
+    const candidate = joinLaoWordsSmart([...currentChunk, w]);
+    if (currentChunk.length > 0 && candidate.length > targetMaxChars) {
+      let hangingPrefix = "";
+      if (currentChunk.length > 1 && isHangingLaoPrefix(currentChunk[currentChunk.length - 1])) {
+        hangingPrefix = currentChunk.pop()!;
+      }
+      chunks.push(joinLaoWordsSmart(currentChunk));
+      currentChunk = hangingPrefix ? [hangingPrefix, w] : [w];
     } else {
       currentChunk.push(w);
-      currentLen += addLen;
     }
   }
   if (currentChunk.length > 0) {
-    chunks.push(currentChunk.join(" "));
+    chunks.push(joinLaoWordsSmart(currentChunk));
   }
 
   const totalDur = Math.max(0.4, endSec - startSec);

@@ -223,7 +223,7 @@ function buildStyledTextContent(
     if (text.length > 0) {
       const prevChar = text[text.length - 1];
       const nextChar = rawRunText[0];
-      if (!(isLao(prevChar) && isLao(nextChar))) {
+      if (prevChar !== "\n" && nextChar !== "\n" && !(isLao(prevChar) && isLao(nextChar))) {
         renderedRunText = " " + renderedRunText;
       }
     }
